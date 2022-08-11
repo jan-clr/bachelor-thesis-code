@@ -11,7 +11,6 @@ class CustomCityscapesDataset(VisionDataset):
 	"""
 
 	"""
-
 	# Based on https://github.com/mcordts/cityscapesScripts
 	classes = Cityscapes.classes
 

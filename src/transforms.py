@@ -19,6 +19,6 @@ def transform(image, target):
 
 	# convert to Tensors
 	image = TF.to_tensor(image)
-	target = torch.as_tensor(np.array(target), dtype=torch.int64)
+	target = torch.as_tensor(np.array(target), dtype=torch.long)
 
 	return image, target
