@@ -46,7 +46,7 @@ class CustomCityscapesDataset(VisionDataset):
 
 		# generate label Ids for training
 		if id_to_use == 'labelTrainIds':
-			classes = list(filter(lambda cs_class: cs_class.train_id not in [-1, 255], Cityscapes.classes))
+			self.classes = list(filter(lambda cs_class: cs_class.train_id not in [-1, 255], Cityscapes.classes))
 			if not glob.glob(f"{self.root_dir}/*/*/*/*labelTrainIds*"):
 				createTrainIdLabelImgs.main()
 
