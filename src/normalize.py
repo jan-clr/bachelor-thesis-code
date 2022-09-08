@@ -1,7 +1,5 @@
 from utils import normalize_data
 import sys
-import os
-import cv2
 
 
 def main():

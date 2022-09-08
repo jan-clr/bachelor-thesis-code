@@ -45,8 +45,10 @@ class CustomCityscapesDataset(VisionDataset):
 					' specified "mode" are inside the "root" directory')
 
 		# generate label Ids for training
-		if id_to_use == 'labelTrainIds' and not glob.glob(f"{self.root_dir}/*/*/*/*labelTrainIds*"):
-			createTrainIdLabelImgs.main()
+		if id_to_use == 'labelTrainIds':
+			classes = list(filter(lambda cs_class: cs_class.train_id not in [-1, 255], Cityscapes.classes))
+			if not glob.glob(f"{self.root_dir}/*/*/*/*labelTrainIds*"):
+				createTrainIdLabelImgs.main()
 
 		target_file_ending = f'gtFine_{id_to_use}.png'
 
