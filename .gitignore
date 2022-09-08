@@ -133,3 +133,5 @@ dmypy.json
 
 # Training data
 data
+
+playground.py

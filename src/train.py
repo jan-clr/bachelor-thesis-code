@@ -11,7 +11,7 @@ import inquirer
 from transforms import transform
 from cityscapes_dataset import CustomCityscapesDataset
 from model import CS_UNET
-from utils import save_checkpoint, load_checkpoint
+from utils import save_checkpoint, load_checkpoint, IoU
 
 
 LEARNING_RATE = 1e-4
@@ -19,8 +19,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
 NUM_EPOCHS = 10
 NUM_WORKERS = 2
-IMAGE_HEIGHT = 224  # 1280 originally
-IMAGE_WIDTH = 224  # 1918 originally
+IMAGE_HEIGHT = 224
+IMAGE_WIDTH = 224
 PIN_MEMORY = True
 LOAD_MODEL = False
 ROOT_DATA_DIR = '../data'
@@ -59,7 +59,7 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
         X = X.float().to(DEVICE)
         # y is still long for some reason
         y = y.to(DEVICE)
-        print(y.min(), y.max(), torch.unique(y))
+        # print(y.min(), y.max(), torch.unique(y))
 
         # Compute prediction and loss
         pred = model(X)
@@ -70,8 +70,10 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
         loss.backward()
         optimizer.step()
 
-        jaccard = torchmetrics.JaccardIndex(len(loader.dataset.classes), ignore_index=255).to(DEVICE)
-        jaccard_idx = jaccard(pred, y)
+        # jaccard = torchmetrics.JaccardIndex(len(loader.dataset.classes), ignore_index=255).to(DEVICE)
+        # jaccard_idx = jaccard(pred, y)
+
+        jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y, n_classes=len(loader.dataset.classes))
 
         if writer is not None:
             writer.add_scalar('Training Loss', loss.item(), global_step=step)
@@ -98,7 +100,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"basic_no_aug_SGD" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"no_aug_SGD" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -111,7 +113,6 @@ def main():
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
     test_dataloader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
 
-    print(len(train_data.classes))
     model = CS_UNET(in_ch=3, out_ch=len(train_data.classes)).to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
