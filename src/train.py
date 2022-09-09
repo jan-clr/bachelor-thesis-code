@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
@@ -22,7 +23,7 @@ NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 PIN_MEMORY = True
-LOAD_MODEL = False
+LOAD_MODEL = True
 ROOT_DATA_DIR = '../data'
 DATASET_NAME = 'Cityscapes'
 
@@ -88,8 +89,22 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
     return step
 
 
-def val_loop(loader, model, loss_fn):
-    pass
+def val_fn(loader, model, loss_fn, step=0, writer=None):
+    model.eval()
+    losses = []
+    ious = []
+    with torch.no_grad():
+        for batch, (X, y) in enumerate(loader):
+            pred = model(X)
+            loss = loss_fn(pred, y)
+            jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y,
+                                      n_classes=len(loader.dataset.classes))
+            losses.append(loss.item())
+            ious.append(jaccard_idx)
+
+    if writer is not None:
+        writer.add_scalar('Validation Loss', np.array(losses).sum() / len(losses), global_step=step)
+        writer.add_scalar('Validation Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
 
 
 def main():
@@ -132,7 +147,7 @@ def main():
         epoch_global += 1
         print(f"Epoch {epoch + 1}\n-------------------------------")
         step = train_loop(loader=train_dataloader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer, step=step)
-
+        val_fn(test_dataloader, model, loss_fn, step, writer)
         # save model
         checkpoint = {
             "state_dict": model.state_dict(),
@@ -141,6 +156,7 @@ def main():
             "epochs": epoch_global
         }
         save_checkpoint(checkpoint, run_file)
+        save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
 
     print("\nTraining Complete.")
 
