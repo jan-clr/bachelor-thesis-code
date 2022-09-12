@@ -41,7 +41,7 @@ class CustomCityscapesDataset(VisionDataset):
 				extract_archive(from_path=target_dir_zip, to_path=self.root_dir)
 			else:
 				raise RuntimeError(
-					"Dataset not found or incomplete. Please make sure all required folders for the"
+					f"Dataset at '{root_dir}' not found or incomplete. Please make sure all required folders for the"
 					' specified "mode" are inside the "root" directory')
 
 		# generate label Ids for training
