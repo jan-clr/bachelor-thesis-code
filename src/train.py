@@ -18,7 +18,7 @@ from utils import save_checkpoint, load_checkpoint, IoU
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
-NUM_EPOCHS = 10
+NUM_EPOCHS = 50
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
@@ -56,6 +56,8 @@ def show_img_and_pred(img, target=None, prediction=None):
 
 def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
     size = len(loader.dataset)
+    losses = []
+    ious = []
     for batch, (X, y) in enumerate(loader):
         X = X.float().to(DEVICE)
         # y is still long for some reason
@@ -76,17 +78,18 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
 
         jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y, n_classes=len(loader.dataset.classes))
 
-        if writer is not None:
-            writer.add_scalar('Training Loss', loss.item(), global_step=step)
-            writer.add_scalar('Training Jaccard Index', jaccard_idx, global_step=step)
+        losses.append(loss.item())
+        ious.append(jaccard_idx)
 
         if batch % 20 == 0:
             loss, current = loss.item(), batch * len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
-        step += 1
+    if writer is not None:
+        writer.add_scalar('Training Loss', np.array(losses).sum() / len(losses), global_step=step)
+        writer.add_scalar('Training Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
 
-    return step
+    return losses, ious
 
 
 def val_fn(loader, model, loss_fn, step=0, writer=None):
@@ -95,9 +98,11 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
     ious = []
     with torch.no_grad():
         for batch, (X, y) in enumerate(loader):
+            X = X.float().to(DEVICE)
+            y = y.to(DEVICE)
             pred = model(X)
             loss = loss_fn(pred, y)
-            jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y,
+            jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred.float(), 1), 1), ground_truth=y,
                                       n_classes=len(loader.dataset.classes))
             losses.append(loss.item())
             ious.append(jaccard_idx)
@@ -105,6 +110,10 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
     if writer is not None:
         writer.add_scalar('Validation Loss', np.array(losses).sum() / len(losses), global_step=step)
         writer.add_scalar('Validation Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
+
+    model.train()
+
+    return losses, ious
 
 
 def main():
@@ -146,8 +155,7 @@ def main():
     for epoch in range(NUM_EPOCHS):
         epoch_global += 1
         print(f"Epoch {epoch + 1}\n-------------------------------")
-        step = train_loop(loader=train_dataloader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer, step=step)
-        val_fn(test_dataloader, model, loss_fn, step, writer)
+        train_loop(loader=train_dataloader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer, step=epoch_global)
         # save model
         checkpoint = {
             "state_dict": model.state_dict(),
@@ -157,6 +165,7 @@ def main():
         }
         save_checkpoint(checkpoint, run_file)
         save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
+        val_fn(test_dataloader, model, loss_fn, epoch_global, writer)
 
     print("\nTraining Complete.")
 
