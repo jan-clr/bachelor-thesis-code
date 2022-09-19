@@ -140,7 +140,8 @@ def main():
     model = CS_UNET(in_ch=3, out_ch=len(train_data.classes)).to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
-    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
+    # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     step = 0
     epoch_global = 0
