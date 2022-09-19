@@ -124,15 +124,15 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"no_aug_SGD" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"fourway_split_SGD" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
     current_dataset = DATASET_NAME
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
-    train_data = CustomCityscapesDataset(data_dir, transforms=transform)
-    test_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transform)
+    train_data = CustomCityscapesDataset(data_dir, transforms=transform, split=True)
+    test_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transform, split=True)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
     test_dataloader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)

@@ -103,8 +103,6 @@ def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes:int, ignore_id
 
     include_in_eval = np.array([score for score in ious if not np.isnan(score)])
 
-    print(ious, include_in_eval)
-
     SMOOTH = 1e-6
     avg = (include_in_eval.sum() + SMOOTH) / (len(include_in_eval) + SMOOTH)
 
