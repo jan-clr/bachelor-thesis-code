@@ -10,7 +10,7 @@ from tqdm import tqdm
 import inquirer
 # from datetime import datetime
 
-from transforms import transform
+from transforms import transforms_train, transforms_val
 from cityscapes_dataset import CustomCityscapesDataset
 from model import CS_UNET
 from utils import save_checkpoint, load_checkpoint, IoU
@@ -135,8 +135,8 @@ def main():
     current_dataset = DATASET_NAME
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
-    train_data = CustomCityscapesDataset(data_dir, transforms=transform, split=True)
-    val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transform, split=True)
+    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train)
+    val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)

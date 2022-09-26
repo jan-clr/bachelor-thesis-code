@@ -1,10 +1,10 @@
 import torch
 import numpy as np
 import torchvision.transforms.functional as TF
-from torchvision.transforms import Resize, InterpolationMode
+from torchvision.transforms import RandomCrop
 
 
-def transform(image, target):
+def transforms_train(image, target):
 	"""
 
 	:param image:
@@ -13,12 +13,18 @@ def transform(image, target):
 	"""
 	size = (224, 224)
 
-	# resize the image and the mask
-	resize_img = Resize(size=size)
-	resize_target = Resize(size=size, interpolation=InterpolationMode.NEAREST)
-	image = resize_img(image)
-	target = resize_target(target)
+	# convert to Tensors
+	image = TF.to_tensor(image)
+	target = torch.as_tensor(np.array(target), dtype=torch.long)
 
+	crop = RandomCrop(size)
+	image = crop(image)
+	target = crop(target)
+
+	return image, target
+
+
+def transforms_val(image, target):
 	# convert to Tensors
 	image = TF.to_tensor(image)
 	target = torch.as_tensor(np.array(target), dtype=torch.long)
