@@ -2,6 +2,12 @@ import torch
 import cv2
 import os
 import numpy as np
+from pathlib import Path
+from glob import glob
+from PIL import Image, ImageFile
+from torchvision.transforms import InterpolationMode
+import torchvision.transforms.functional as TF
+
 
 
 def save_checkpoint(state, filename="my_checkpoint.pth.tar") -> None:
@@ -107,3 +113,28 @@ def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes:int, ignore_id
     avg = (include_in_eval.sum() + SMOOTH) / (len(include_in_eval) + SMOOTH)
 
     return avg, np.array(ious)
+
+
+def resize_images(from_path, to_path, size, anti_aliasing=True):
+    # recreate dir structure
+    Path(to_path).mkdir(parents=True, exist_ok=True)
+
+    src_prefix = len(from_path) + len(os.path.sep)
+
+    for root, dirs, files in os.walk(from_path):
+        for dirname in dirs:
+            dirpath = os.path.join(to_path, root[src_prefix:], dirname)
+            Path(dirpath).mkdir(exist_ok=True)
+
+    images = glob(f"{from_path}/**/*.png", recursive=True)
+
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    i = 0
+    for img_file in images:
+        img = Image.open(img_file)
+        resized = TF.resize(img, size,
+                            interpolation=InterpolationMode.BILINEAR if anti_aliasing else InterpolationMode.NEAREST)
+        resized.save(os.path.join(to_path, img_file[src_prefix:]))
+
+        i += 1
+        print(f"\rResized {i}/{len(images)}", end='')

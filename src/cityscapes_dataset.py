@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from cityscapesscripts.preparation import createTrainIdLabelImgs
 import glob
 import torchvision.transforms.functional as TF
-
 from PIL import Image
+from utils import resize_images
 
 
 class CustomCityscapesDataset(VisionDataset):
@@ -19,13 +19,13 @@ class CustomCityscapesDataset(VisionDataset):
 
     def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelTrainIds', transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 transforms: Optional[Callable] = None, split: bool = False) -> None:
+                 transforms: Optional[Callable] = None, split: bool = False, low_res: bool = True) -> None:
 
         super(CustomCityscapesDataset, self).__init__(root_dir, transforms, transform, target_transform)
 
         self.root_dir = root_dir
-        self.image_dir = os.path.join(root_dir, 'leftImg8bit', mode)
-        self.target_dir = os.path.join(root_dir, 'gtFine', mode)
+        self.image_dir = os.path.join(root_dir, f'leftImg8bit{"_lowres" if low_res else ""}', mode)
+        self.target_dir = os.path.join(root_dir, f'gtFine{"_lowres" if low_res else ""}', mode)
         self.images = []
         self.targets = []
         self.split = split
@@ -33,27 +33,39 @@ class CustomCityscapesDataset(VisionDataset):
         # Set env var for cityscapeScripts preparation
         os.environ['CITYSCAPES_DATASET'] = root_dir
 
-        # Try to extract zips if unzipped files are not present
+        print(self.image_dir, self.target_dir)
+        # look for full res files or zips if dirs not present
         if not os.path.isdir(self.image_dir) or not os.path.isdir(self.target_dir):
-            image_dir_zip = os.path.join(self.root_dir, 'leftImg8bit_trainvaltest.zip')
-            target_dir_zip = os.path.join(self.root_dir, 'gtFine_trainvaltest.zip')
-
-            if os.path.isfile(image_dir_zip) and os.path.isfile(target_dir_zip):
-                extract_archive(from_path=image_dir_zip, to_path=self.root_dir)
-                extract_archive(from_path=target_dir_zip, to_path=self.root_dir)
+            # when using downsampled images, check if full res images available
+            imdir_full, tardir_full = os.path.join(root_dir, 'leftImg8bit', mode), os.path.join(root_dir, 'gtFine', mode)
+            if low_res and os.path.isdir(imdir_full) and os.path.isdir(tardir_full):
+                resize_images(from_path=imdir_full, to_path=self.image_dir, size=(256, 512))
+                resize_images(from_path=tardir_full, to_path=self.target_dir, size=(256, 512), anti_aliasing=False)
             else:
-                raise RuntimeError(
-                    f"Dataset at '{root_dir}' not found or incomplete. Please make sure all required folders for the"
-                    ' specified "mode" are inside the "root" directory')
+                # Try to extract zips if unzipped files are not present
+                image_dir_zip = os.path.join(self.root_dir, 'leftImg8bit_trainvaltest.zip')
+                target_dir_zip = os.path.join(self.root_dir, 'gtFine_trainvaltest.zip')
 
-        # generate label Ids for training
-        if id_to_use == 'labelTrainIds':
-            self.classes = list(filter(lambda cs_class: cs_class.train_id not in [-1, 255], Cityscapes.classes))
-            if not glob.glob(f"{self.root_dir}/*/*/*/*labelTrainIds*"):
-                createTrainIdLabelImgs.main()
+                if os.path.isfile(image_dir_zip) and os.path.isfile(target_dir_zip):
+                    exit()
+                    extract_archive(from_path=image_dir_zip, to_path=self.root_dir)
+                    extract_archive(from_path=target_dir_zip, to_path=self.root_dir)
+                    # generate label Ids for training
+                    if id_to_use == 'labelTrainIds':
+                        self.classes = list(filter(lambda cs_class: cs_class.train_id not in [-1, 255], Cityscapes.classes))
+                        if not glob.glob(f"{self.root_dir}/*/*/*/*labelTrainIds*"):
+                            createTrainIdLabelImgs.main()
+                    if low_res:
+                        resize_images(from_path=imdir_full, to_path=self.image_dir, size=(256, 512))
+                        resize_images(from_path=tardir_full, to_path=self.target_dir, size=(256, 512), anti_aliasing=False)
+                else:
+                    raise RuntimeError(
+                        f"Dataset at '{root_dir}' not found or incomplete. Please make sure all required folders for the"
+                        ' specified "mode" are inside the "root" directory')
 
         target_file_ending = f'gtFine_{id_to_use}.png'
 
+        # add files to index
         for city in os.listdir(self.image_dir):
             img_dir = os.path.join(self.image_dir, city)
             target_dir = os.path.join(self.target_dir, city)
@@ -91,3 +103,11 @@ class CustomCityscapesDataset(VisionDataset):
                 target = self.target_transform(target)
 
         return image, target
+
+
+def main():
+    train_data = CustomCityscapesDataset("../data/Cityscapes", split=False)
+
+
+if __name__ == '__main__':
+    main()

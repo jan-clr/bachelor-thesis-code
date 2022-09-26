@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torchmetrics
 from torch.utils.tensorboard import SummaryWriter  # to print to tensorboard
+from tqdm import tqdm
 import inquirer
 # from datetime import datetime
 
@@ -58,7 +59,8 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
     size = len(loader.dataset)
     losses = []
     ious = []
-    for batch, (X, y) in enumerate(loader):
+    loop = tqdm(enumerate(loader), total=len(loader), leave=False)
+    for batch, (X, y) in loop:
         X = X.float().to(DEVICE)
         # y is still long for some reason
         y = y.to(DEVICE)
@@ -78,12 +80,14 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
 
         jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y, n_classes=len(loader.dataset.classes))
 
-        losses.append(loss.item())
+        losses.append(float(loss.item()))
         ious.append(jaccard_idx)
 
-        if batch % 20 == 0:
-            loss, current = loss.item(), batch * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+        # if batch % 20 == 0:
+        #     loss, current = loss.item(), batch * len(X)
+        #     print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+
+        loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
 
     if writer is not None:
         writer.add_scalar('Training Loss', np.array(losses).sum() / len(losses), global_step=step)
@@ -124,7 +128,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"fourway_split_SGD" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"fourway_split_Adam" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -132,10 +136,10 @@ def main():
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
     train_data = CustomCityscapesDataset(data_dir, transforms=transform, split=True)
-    test_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transform, split=True)
+    val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transform, split=True)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
-    test_dataloader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
+    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
 
     model = CS_UNET(in_ch=3, out_ch=len(train_data.classes)).to(DEVICE)
 
@@ -166,7 +170,7 @@ def main():
         }
         save_checkpoint(checkpoint, run_file)
         save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
-        val_fn(test_dataloader, model, loss_fn, epoch_global, writer)
+        val_fn(val_dataloader, model, loss_fn, epoch_global, writer)
 
     print("\nTraining Complete.")
 
