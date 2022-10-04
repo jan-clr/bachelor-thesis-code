@@ -19,12 +19,12 @@ from utils import save_checkpoint, load_checkpoint, IoU
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
-NUM_EPOCHS = 50
+NUM_EPOCHS = 100
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 PIN_MEMORY = True
-LOAD_MODEL = False
+LOAD_MODEL = True
 ROOT_DATA_DIR = '../data'
 DATASET_NAME = 'Cityscapes'
 
@@ -169,7 +169,8 @@ def main():
             "epochs": epoch_global
         }
         save_checkpoint(checkpoint, run_file)
-        save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
+        if epoch_global % 5 == 0:
+            save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
         val_fn(val_dataloader, model, loss_fn, epoch_global, writer)
 
     print("\nTraining Complete.")
