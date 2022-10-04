@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import timm
+import itertools
 
 
 class DoubleConv(nn.Module):
@@ -21,9 +23,15 @@ class DoubleConv(nn.Module):
 			nn.BatchNorm2d(num_features=out_ch),
 			nn.ReLU(inplace=True)
 		)
+		self.init_weights()
 
 	def forward(self, x):
 		return self.conv(x)
+
+	def init_weights(self):
+		for m in self.conv:
+			if isinstance(m, nn.Conv2d):
+				nn.init.xavier_normal_(m.weight)
 
 
 class CS_UNET(nn.Module):
@@ -73,6 +81,58 @@ class CS_UNET(nn.Module):
 		return self.final(x)
 
 
+class UnetResEncoder(nn.Module):
+	"""
+		UNET Implementation using pretrained ResNet as Encoder
+	"""
+
+	def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34'):
+		super(UnetResEncoder, self).__init__()
+
+		self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch)
+		feature_steps = self.encoder.feature_info.channels()
+		self.up = nn.ModuleList()
+
+		# define expansive path
+		for features in itertools.pairwise(reversed(feature_steps)):
+			self.up.append(nn.ConvTranspose2d(features[0], features[1], kernel_size=2, stride=2))
+			self.up.append(DoubleConv(features[1] * 2, features[1]))
+
+		self.decode_final = nn.Sequential(
+			nn.ConvTranspose2d(feature_steps[0], feature_steps[0], kernel_size=2, stride=2),
+			DoubleConv(feature_steps[0], feature_steps[0])
+		)
+
+		self.final = nn.Conv2d(feature_steps[0], out_ch, kernel_size=1)
+
+		self.init_weights()
+
+	def forward(self, x):
+		out_down = self.encoder(x)
+
+		out_down = out_down[::-1]
+		x = out_down[0]
+
+		for i, up_step in enumerate(pairwise_iter(self.up)):
+			# perform ConvTransposed
+			x = up_step[0](x)
+			# concat downwards result
+			x = torch.cat((out_down[i + 1], x), dim=1)
+			# perform DoubleConv
+			x = up_step[1](x)
+
+		x = self.decode_final(x)
+
+		return self.final(x)
+
+	def init_weights(self):
+		for m in self.modules():
+			if isinstance(m, nn.ConvTranspose2d):
+				nn.init.xavier_normal_(m.weight)
+
+		nn.init.xavier_normal_(self.final.weight)
+
+
 def pairwise_iter(iterable):
 	"""
 	| Return an iterator that returns the elements of an iterable pairwise
@@ -88,10 +148,11 @@ def pairwise_iter(iterable):
 
 def test():
 	x = torch.randn((1, 3, 224, 224))
-	model = CS_UNET(in_ch=3, out_ch=3)
-	preds = model(x)
-	print(x.shape, preds.shape)
-	assert x.shape == preds.shape
+	model = UnetResEncoder()
+	model.eval()
+	out = model(x)
+	for o in out:
+		print(o.shape)
 
 
 def main():
