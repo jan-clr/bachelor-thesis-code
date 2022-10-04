@@ -24,7 +24,7 @@ NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 PIN_MEMORY = True
-LOAD_MODEL = True
+LOAD_MODEL = False
 ROOT_DATA_DIR = '../data'
 DATASET_NAME = 'Cityscapes'
 
@@ -128,7 +128,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"fourway_split_Adam" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"res34_upConv_noAug" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
