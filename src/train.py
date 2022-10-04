@@ -12,7 +12,7 @@ import inquirer
 
 from transforms import transforms_train, transforms_val
 from cityscapes_dataset import CustomCityscapesDataset
-from model import CS_UNET
+from model import CS_UNET, UnetResEncoder
 from utils import save_checkpoint, load_checkpoint, IoU
 
 
@@ -141,7 +141,7 @@ def main():
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
 
-    model = CS_UNET(in_ch=3, out_ch=len(train_data.classes)).to(DEVICE)
+    model = UnetResEncoder(in_ch=3, out_ch=len(train_data.classes)).to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
