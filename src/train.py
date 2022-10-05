@@ -19,7 +19,7 @@ from utils import save_checkpoint, load_checkpoint, IoU
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
-NUM_EPOCHS = 100
+NUM_EPOCHS = 200
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224

@@ -47,7 +47,6 @@ class CustomCityscapesDataset(VisionDataset):
                 target_dir_zip = os.path.join(self.root_dir, 'gtFine_trainvaltest.zip')
 
                 if os.path.isfile(image_dir_zip) and os.path.isfile(target_dir_zip):
-                    exit()
                     extract_archive(from_path=image_dir_zip, to_path=self.root_dir)
                     extract_archive(from_path=target_dir_zip, to_path=self.root_dir)
                     # generate label Ids for training
