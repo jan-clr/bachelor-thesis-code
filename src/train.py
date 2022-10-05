@@ -167,7 +167,7 @@ def main():
 
     for epoch in range(NUM_EPOCHS):
         epoch_global += 1
-        print(f"Epoch {epoch + 1}\n-------------------------------")
+        print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
         train_loop(loader=train_loader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer,
                    step=epoch_global)
         # save model
@@ -179,6 +179,9 @@ def main():
         }
         save_checkpoint(checkpoint, run_file)
 
+        if epoch_global % 10 == 0:
+            save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
+
         losses, ious = val_fn(val_loader, model, loss_fn, epoch_global, writer)
         val_loss = np.array(losses).sum() / len(losses)
 
@@ -188,8 +191,7 @@ def main():
         elif best_loss - val_loss > MIN_DELTA:
             patience_counter = 0
             best_loss = val_loss
-            if epoch_global % 5 == 0:
-                save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
+            save_checkpoint(checkpoint, f"{run_dir}/model_best.pth.tar")
         else:
             patience_counter += 1
             print(
@@ -198,6 +200,8 @@ def main():
         if patience_counter >= PATIENCE:
             print("Stopping early because of stagnant validation loss.")
             break
+
+        print(f"-------------------------------\n")
 
     print("\nTraining Complete.")
 
