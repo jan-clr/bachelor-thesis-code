@@ -86,7 +86,7 @@ class UnetResEncoder(nn.Module):
 		UNET Implementation using pretrained ResNet as Encoder
 	"""
 
-	def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34'):
+	def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34', freeze_encoder=False):
 		super(UnetResEncoder, self).__init__()
 
 		self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch)
@@ -106,6 +106,8 @@ class UnetResEncoder(nn.Module):
 		self.final = nn.Conv2d(feature_steps[0], out_ch, kernel_size=1)
 
 		self.init_weights()
+		if freeze_encoder:
+			self.freeze_encoder()
 
 	def forward(self, x):
 		out_down = self.encoder(x)
@@ -131,6 +133,10 @@ class UnetResEncoder(nn.Module):
 				nn.init.xavier_normal_(m.weight)
 
 		nn.init.xavier_normal_(self.final.weight)
+
+	def freeze_encoder(self):
+		for param in self.encoder.parameters():
+			param.requires_grad = False
 
 
 def pairwise_iter(iterable):
