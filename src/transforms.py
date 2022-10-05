@@ -17,9 +17,11 @@ def transforms_train(image, target):
 	image = TF.to_tensor(image)
 	target = torch.as_tensor(np.array(target), dtype=torch.long)
 
-	crop = RandomCrop(size)
-	image = crop(image)
-	target = crop(target)
+	# Random crop
+	i, j, h, w = RandomCrop.get_params(
+		image, output_size=size)
+	image = TF.crop(image, i, j, h, w)
+	target = TF.crop(target, i, j, h, w)
 
 	return image, target
 
