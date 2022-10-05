@@ -15,7 +15,6 @@ from src.cityscapes_dataset import CustomCityscapesDataset
 from src.model import CS_UNET, UnetResEncoder
 from src.utils import save_checkpoint, load_checkpoint, IoU
 
-
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
@@ -23,6 +22,8 @@ NUM_EPOCHS = 200
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
+MIN_DELTA = 1e-3
+PATIENCE = 20
 PIN_MEMORY = True
 LOAD_MODEL = True
 ROOT_DATA_DIR = '../data'
@@ -78,7 +79,8 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
         # jaccard = torchmetrics.JaccardIndex(len(loader.dataset.classes), ignore_index=255).to(DEVICE)
         # jaccard_idx = jaccard(pred, y)
 
-        jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y, n_classes=len(loader.dataset.classes))
+        jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y,
+                                  n_classes=len(loader.dataset.classes))
 
         losses.append(float(loss.item()))
         ious.append(jaccard_idx)
@@ -160,11 +162,14 @@ def main():
 
     # logging
     writer = SummaryWriter(log_dir=run_dir)
+    best_loss = None
+    patience_counter = 0
 
     for epoch in range(NUM_EPOCHS):
         epoch_global += 1
         print(f"Epoch {epoch + 1}\n-------------------------------")
-        train_loop(loader=train_loader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer, step=epoch_global)
+        train_loop(loader=train_loader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer,
+                   step=epoch_global)
         # save model
         checkpoint = {
             "state_dict": model.state_dict(),
@@ -173,9 +178,26 @@ def main():
             "epochs": epoch_global
         }
         save_checkpoint(checkpoint, run_file)
-        if epoch_global % 5 == 0:
-            save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
-        val_fn(val_loader, model, loss_fn, epoch_global, writer)
+
+        losses, ious = val_fn(val_loader, model, loss_fn, epoch_global, writer)
+        val_loss = np.array(losses).sum() / len(losses)
+
+        # early stopping
+        if best_loss is None:
+            best_loss = val_loss
+        elif best_loss - val_loss > MIN_DELTA:
+            patience_counter = 0
+            best_loss = val_loss
+            if epoch_global % 5 == 0:
+                save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
+        else:
+            patience_counter += 1
+            print(
+                f"No validation loss improvement since {patience_counter} epochs.\nStopping after another {PATIENCE - patience_counter} epochs without improvement.")
+
+        if patience_counter >= PATIENCE:
+            print("Stopping early because of stagnant validation loss.")
+            break
 
     print("\nTraining Complete.")
 
