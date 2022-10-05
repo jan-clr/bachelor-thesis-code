@@ -7,6 +7,14 @@ from glob import glob
 from PIL import Image, ImageFile
 from torchvision.transforms import InterpolationMode
 import torchvision.transforms.functional as TF
+from slack_sdk import WebhookClient
+from dotenv import load_dotenv
+import socket
+
+
+load_dotenv()
+
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 
 def save_checkpoint(state, filename="my_checkpoint.pth.tar") -> None:
@@ -137,3 +145,63 @@ def resize_images(from_path, to_path, size, anti_aliasing=True):
 
         i += 1
         print(f"\rResized {i}/{len(images)}", end='')
+
+
+def send_slack_msg(content, text="Fallback Alert"):
+    if SLACK_WEBHOOK_URL is None:
+        print("No webhook url specified. Make sure .env is setup correctly.")
+        return
+
+    webhook = WebhookClient(SLACK_WEBHOOK_URL)
+    response = webhook.send(
+        text=text,
+        blocks=content
+    )
+
+
+def alert_training_end(run_name, epoch=0, final_metrics=None, stopped_early=False):
+    blocks = [{
+			"type": "header",
+			"text": {
+				"type": "plain_text",
+				"text": "Training Complete"
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": f"The training for the run *{run_name}* has been completed after *{epoch} epochs*, because {'improvement has stopped' if stopped_early else 'the maximum number of epochs has been reached'}."
+			}
+		},
+		]
+    if final_metrics is not None:
+        blocks.append({
+			"type": "divider"
+		})
+        blocks.append({
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": f"{final_metrics}"
+			}
+		})
+
+    blocks.append({
+			"type": "context",
+			"elements": [
+				{
+					"type": "plain_text",
+					"text": f"Host: {socket.gethostname()}"
+				}
+			]
+		})
+    send_slack_msg(blocks, "Training Complete")
+
+
+def main():
+    alert_training_end('testrun', 10, stopped_early=False)
+
+
+if __name__ == '__main__':
+    main()

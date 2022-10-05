@@ -13,7 +13,7 @@ import inquirer
 from transforms import transforms_train, transforms_val
 from cityscapes_dataset import CustomCityscapesDataset
 from model import CS_UNET, UnetResEncoder
-from utils import save_checkpoint, load_checkpoint, IoU
+from utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
 
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -204,6 +204,7 @@ def main():
         print(f"-------------------------------\n")
 
     print("\nTraining Complete.")
+    alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= PATIENCE))
 
 
 if __name__ == '__main__':
