@@ -9,7 +9,6 @@ from torchvision.transforms import InterpolationMode
 import torchvision.transforms.functional as TF
 
 
-
 def save_checkpoint(state, filename="my_checkpoint.pth.tar") -> None:
     print("=> Saving checkpoint")
     torch.save(state, filename)

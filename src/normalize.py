@@ -1,4 +1,4 @@
-from utils import normalize_data
+from src.utils import normalize_data
 import sys
 
 

@@ -10,10 +10,10 @@ from tqdm import tqdm
 import inquirer
 # from datetime import datetime
 
-from transforms import transforms_train, transforms_val
-from cityscapes_dataset import CustomCityscapesDataset
-from model import CS_UNET, UnetResEncoder
-from utils import save_checkpoint, load_checkpoint, IoU
+from src.transforms import transforms_train, transforms_val
+from src.cityscapes_dataset import CustomCityscapesDataset
+from src.model import CS_UNET, UnetResEncoder
+from src.utils import save_checkpoint, load_checkpoint, IoU
 
 
 LEARNING_RATE = 1e-4
@@ -120,28 +120,33 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
     return losses, ious
 
 
-def main():
-
-    if DEVICE != 'cuda':
-        questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
-        answers = inquirer.prompt(questions)
-        if not answers['proceed']:
-            exit()
-
-    run_name = f"res34_upConv_noAug" # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
-    run_dir = f"../runs/{DATASET_NAME}/{run_name}"
-    run_file = f"{run_dir}/model.pth.tar"
-
-    current_dataset = DATASET_NAME
-    data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
-
+def get_loaders(data_dir):
     train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
 
-    model = UnetResEncoder(in_ch=3, out_ch=len(train_data.classes)).to(DEVICE)
+    return train_dataloader, val_dataloader
+
+
+def main():
+    if DEVICE != 'cuda':
+        questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
+        answers = inquirer.prompt(questions)
+        if not answers['proceed']:
+            exit()
+
+    run_name = f"res34_upConv_noAug"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_dir = f"../runs/{DATASET_NAME}/{run_name}"
+    run_file = f"{run_dir}/model.pth.tar"
+
+    current_dataset = DATASET_NAME
+    data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
+
+    train_loader, val_loader = get_loaders(data_dir)
+
+    model = UnetResEncoder(in_ch=3, out_ch=len(train_loader.dataset.classes)).to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
@@ -151,7 +156,6 @@ def main():
     epoch_global = 0
     if LOAD_MODEL:
         step, epoch_global = load_checkpoint(run_file, model, optimizer)
-
     print("\nBeginning Training\n")
 
     # logging
@@ -160,7 +164,7 @@ def main():
     for epoch in range(NUM_EPOCHS):
         epoch_global += 1
         print(f"Epoch {epoch + 1}\n-------------------------------")
-        train_loop(loader=train_dataloader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer, step=epoch_global)
+        train_loop(loader=train_loader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer, step=epoch_global)
         # save model
         checkpoint = {
             "state_dict": model.state_dict(),
@@ -171,7 +175,7 @@ def main():
         save_checkpoint(checkpoint, run_file)
         if epoch_global % 5 == 0:
             save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
-        val_fn(val_dataloader, model, loss_fn, epoch_global, writer)
+        val_fn(val_loader, model, loss_fn, epoch_global, writer)
 
     print("\nTraining Complete.")
 
