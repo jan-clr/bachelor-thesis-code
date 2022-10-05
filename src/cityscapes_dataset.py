@@ -7,7 +7,7 @@ from cityscapesscripts.preparation import createTrainIdLabelImgs
 import glob
 import torchvision.transforms.functional as TF
 from PIL import Image
-from src.utils import resize_images
+from utils import resize_images
 
 
 class CustomCityscapesDataset(VisionDataset):

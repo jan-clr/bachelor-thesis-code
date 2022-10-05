@@ -10,10 +10,10 @@ from tqdm import tqdm
 import inquirer
 # from datetime import datetime
 
-from src.transforms import transforms_train, transforms_val
-from src.cityscapes_dataset import CustomCityscapesDataset
-from src.model import CS_UNET, UnetResEncoder
-from src.utils import save_checkpoint, load_checkpoint, IoU
+from transforms import transforms_train, transforms_val
+from cityscapes_dataset import CustomCityscapesDataset
+from model import CS_UNET, UnetResEncoder
+from utils import save_checkpoint, load_checkpoint, IoU
 
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
