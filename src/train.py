@@ -92,8 +92,8 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
         loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
 
     if writer is not None:
-        writer.add_scalar('Training Loss', np.array(losses).sum() / len(losses), global_step=step)
-        writer.add_scalar('Training Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
+        writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=step)
+        writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
 
     return losses, ious
 
@@ -114,8 +114,8 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
             ious.append(jaccard_idx)
 
     if writer is not None:
-        writer.add_scalar('Validation Loss', np.array(losses).sum() / len(losses), global_step=step)
-        writer.add_scalar('Validation Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
+        writer.add_scalar('Validation/Loss', np.array(losses).sum() / len(losses), global_step=step)
+        writer.add_scalar('Validation/Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
 
     model.train()
 
@@ -139,7 +139,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"res34_upConv_noAug"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"res34d_upConv_noAug_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
