@@ -8,6 +8,7 @@ import torchmetrics
 from torch.utils.tensorboard import SummaryWriter  # to print to tensorboard
 from tqdm import tqdm
 import inquirer
+import argparse
 # from datetime import datetime
 
 from transforms import transforms_train, transforms_val
@@ -134,13 +135,20 @@ def get_loaders(data_dir):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Start Model Training.")
+
+    parser.add_argument("-rn", "--runname")
+    parser.add_argument("-enc", "--encoder")
+
+    args = parser.parse_args()
+
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
         answers = inquirer.prompt(questions)
         if not answers['proceed']:
             exit()
 
-    run_name = f"res34d_upConv_noAug_lrs_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"{args.runname or 'res34d_upConv_noAug_lrs'}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -149,7 +157,7 @@ def main():
 
     train_loader, val_loader = get_loaders(data_dir)
 
-    model = UnetResEncoder(in_ch=3, out_ch=len(train_loader.dataset.classes), encoder_name='resnet34d').to(DEVICE)
+    model = UnetResEncoder(in_ch=3, out_ch=len(train_loader.dataset.classes), encoder_name=args.encoder or 'resnet34d').to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
