@@ -18,15 +18,15 @@ from utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
-NUM_EPOCHS = 200
+NUM_EPOCHS = 400
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-3
 ES_PATIENCE = 20
-LR_PATIENCE = 20
+LR_PATIENCE = 5
 PIN_MEMORY = True
-LOAD_MODEL = True
+LOAD_MODEL = False
 ROOT_DATA_DIR = '../data'
 DATASET_NAME = 'Cityscapes'
 
@@ -140,7 +140,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"res34d_upConv_noAug_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"res34d_upConv_noAug_lrs_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -149,12 +149,12 @@ def main():
 
     train_loader, val_loader = get_loaders(data_dir)
 
-    model = UnetResEncoder(in_ch=3, out_ch=len(train_loader.dataset.classes)).to(DEVICE)
+    model = UnetResEncoder(in_ch=3, out_ch=len(train_loader.dataset.classes), encoder_name='resnet34d').to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=0.5)
 
     step = 0
     epoch_global = 0
@@ -174,12 +174,12 @@ def main():
 
         save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=run_file)
 
-        if epoch_global % 10 == 0:
-            save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=f"{run_dir}/model_{epoch_global}.pth.tar")
+        # if epoch_global % 10 == 0:
+        #     save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=f"{run_dir}/model_{epoch_global}.pth.tar")
 
         losses, ious = val_fn(val_loader, model, loss_fn, epoch_global, writer)
         val_loss = np.array(losses).sum() / len(losses)
-        scheduler.step(val_loss, epoch=epoch_global)
+        scheduler.step(val_loss)
         # early stopping
         if best_loss is None:
             best_loss = val_loss
