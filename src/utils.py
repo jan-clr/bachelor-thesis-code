@@ -17,15 +17,26 @@ load_dotenv()
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 
-def save_checkpoint(state, filename="my_checkpoint.pth.tar") -> None:
+def save_checkpoint(model, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
+    checkpoint = {
+	    "state_dict": model.state_dict(),
+        "steps": step,
+        "epochs": epoch_global
+                  }
+    if optimizer is not None:
+        checkpoint["optimizer"] = optimizer.state_dict()
+    if scheduler is not None:
+        checkpoint["scheduler"] = scheduler.state_dict()
+
     print("=> Saving checkpoint")
-    torch.save(state, filename)
+    torch.save(checkpoint, filename)
 
 
-def load_checkpoint(checkpoint_file: str, model, optimizer=None) -> (int, int):
+def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None) -> (int, int):
     """
     Loads the models (and optimizers) parameters from a checkpoint file.
 
+    :param scheduler: The scheduler whose parameters to load if not None
     :param checkpoint_file: The path of the checkpoint file
     :param model: The model whose parameters to load
     :param optimizer: The optimizer whose parameters to load if not None
@@ -36,6 +47,9 @@ def load_checkpoint(checkpoint_file: str, model, optimizer=None) -> (int, int):
     model.load_state_dict(checkpoint["state_dict"])
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint["optimizer"])
+    if scheduler is not None:
+        scheduler.load_state_dict(checkpoint["scheduler"])
+
     return checkpoint['steps'], checkpoint["epochs"]
 
 
@@ -161,41 +175,41 @@ def send_slack_msg(content, text="Fallback Alert"):
 
 def alert_training_end(run_name, epoch=0, final_metrics=None, stopped_early=False):
     blocks = [{
-			"type": "header",
-			"text": {
-				"type": "plain_text",
-				"text": "Training Complete"
-			}
-		},
-		{
-			"type": "section",
-			"text": {
-				"type": "mrkdwn",
-				"text": f"The training for the run *{run_name}* has been completed after *{epoch} epochs*, because {'improvement has stopped' if stopped_early else 'the maximum number of epochs has been reached'}."
-			}
-		},
-		]
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "Training Complete"
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"The training for the run *{run_name}* has been completed after *{epoch} epochs*, because {'improvement has stopped' if stopped_early else 'the maximum number of epochs has been reached'}."
+            }
+        },
+        ]
     if final_metrics is not None:
         blocks.append({
-			"type": "divider"
-		})
+            "type": "divider"
+        })
         blocks.append({
-			"type": "section",
-			"text": {
-				"type": "mrkdwn",
-				"text": f"{final_metrics}"
-			}
-		})
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{final_metrics}"
+            }
+        })
 
     blocks.append({
-			"type": "context",
-			"elements": [
-				{
-					"type": "plain_text",
-					"text": f"Host: {socket.gethostname()}"
-				}
-			]
-		})
+            "type": "context",
+            "elements": [
+                {
+                    "type": "plain_text",
+                    "text": f"Host: {socket.gethostname()}"
+                }
+            ]
+        })
     send_slack_msg(blocks, "Training Complete")
 
 

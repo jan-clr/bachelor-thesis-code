@@ -23,7 +23,8 @@ NUM_WORKERS = 2
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-3
-PATIENCE = 20
+ES_PATIENCE = 20
+LR_PATIENCE = 20
 PIN_MEMORY = True
 LOAD_MODEL = True
 ROOT_DATA_DIR = '../data'
@@ -153,13 +154,13 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True)
 
     step = 0
     epoch_global = 0
     if LOAD_MODEL:
-        step, epoch_global = load_checkpoint(run_file, model, optimizer)
+        step, epoch_global = load_checkpoint(run_file, model, optimizer, scheduler)
     print("\nBeginning Training\n")
-
     # logging
     writer = SummaryWriter(log_dir=run_dir)
     best_loss = None
@@ -170,41 +171,35 @@ def main():
         print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
         train_loop(loader=train_loader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer,
                    step=epoch_global)
-        # save model
-        checkpoint = {
-            "state_dict": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "steps": step,
-            "epochs": epoch_global
-        }
-        save_checkpoint(checkpoint, run_file)
+
+        save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=run_file)
 
         if epoch_global % 10 == 0:
-            save_checkpoint(checkpoint, f"{run_dir}/model_{epoch_global}.pth.tar")
+            save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=f"{run_dir}/model_{epoch_global}.pth.tar")
 
         losses, ious = val_fn(val_loader, model, loss_fn, epoch_global, writer)
         val_loss = np.array(losses).sum() / len(losses)
-
+        scheduler.step(val_loss, epoch=epoch_global)
         # early stopping
         if best_loss is None:
             best_loss = val_loss
         elif best_loss - val_loss > MIN_DELTA:
             patience_counter = 0
             best_loss = val_loss
-            save_checkpoint(checkpoint, f"{run_dir}/model_best.pth.tar")
+            save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=f"{run_dir}/model_best.pth.tar")
         else:
             patience_counter += 1
             print(
-                f"No validation loss improvement since {patience_counter} epochs.\nStopping after another {PATIENCE - patience_counter} epochs without improvement.")
+                f"No validation loss improvement since {patience_counter} epochs.\nStopping after another {ES_PATIENCE - patience_counter} epochs without improvement.")
 
-        if patience_counter >= PATIENCE:
+        if patience_counter >= ES_PATIENCE:
             print("Stopping early because of stagnant validation loss.")
             break
 
         print(f"-------------------------------\n")
 
     print("\nTraining Complete.")
-    alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= PATIENCE))
+    alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE))
 
 
 if __name__ == '__main__':
