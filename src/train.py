@@ -26,6 +26,7 @@ IMAGE_WIDTH = 224
 MIN_DELTA = 1e-3
 ES_PATIENCE = 20
 LR_PATIENCE = 5
+LRS_FACTOR = 0.1
 PIN_MEMORY = True
 LOAD_MODEL = False
 ROOT_DATA_DIR = '../data'
@@ -169,7 +170,7 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=0.1)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=LRS_FACTOR)
 
     step = 0
     epoch_global = 0
@@ -179,6 +180,7 @@ def main():
     # logging
     writer = SummaryWriter(log_dir=run_dir)
     best_loss = None
+    vest_iou = None
     patience_counter = 0
 
     for epoch in range(NUM_EPOCHS):
@@ -201,6 +203,7 @@ def main():
         elif best_loss - val_loss > MIN_DELTA:
             patience_counter = 0
             best_loss = val_loss
+            best_iou = np.array(ious).sum() / len(ious)
             save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=f"{run_dir}/model_best.pth.tar")
         else:
             patience_counter += 1
@@ -214,6 +217,8 @@ def main():
         print(f"-------------------------------\n")
 
     print("\nTraining Complete.")
+    writer.add_hparams({'lr': LEARNING_RATE, 'bsize': BATCH_SIZE, "lrs_factor": LRS_FACTOR}, {'hparams/loss': best_loss, 'hparams/iou': best_iou})
+
     alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE))
 
 
