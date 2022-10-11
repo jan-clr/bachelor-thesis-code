@@ -145,10 +145,13 @@ def main():
 
     args = parser.parse_args()
 
+    learning_rate = LEARNING_RATE
+    batch_size = BATCH_SIZE
+
     if args.lr is not None:
-        LEARNING_RATE = float(args.lr)
+        learning_rate = float(args.lr)
     if args.bs is not None:
-        BATCH_SIZE = int(args.bs)
+        batch_size = int(args.bs)
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -156,7 +159,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"{args.runname or 'res34d_upConv_noAug_lrs'}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"{args.runname or 'res34d_upConv_noAug_lrs'}_bs_{batch_size}_lr_{learning_rate}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -169,7 +172,7 @@ def main():
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=LRS_FACTOR)
 
     step = 0
@@ -217,7 +220,7 @@ def main():
         print(f"-------------------------------\n")
 
     print("\nTraining Complete.")
-    writer.add_hparams({'lr': LEARNING_RATE, 'bsize': BATCH_SIZE, "lrs_factor": LRS_FACTOR}, {'hparams/loss': best_loss, 'hparams/iou': best_iou})
+    writer.add_hparams({'lr': learning_rate, 'bsize': batch_size, "lrs_factor": LRS_FACTOR}, {'hparams/loss': best_loss, 'hparams/iou': best_iou})
 
     alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE))
 
