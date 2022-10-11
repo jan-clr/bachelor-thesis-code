@@ -160,7 +160,7 @@ def main():
     if args.lrsp is not None:
         lr_patience = int(args.lrsp)
     if args.lrsf is not None:
-        lrs_factor = int(args.lrsf)
+        lrs_factor = float(args.lrsf)
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
