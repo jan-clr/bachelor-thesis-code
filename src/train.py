@@ -223,7 +223,7 @@ def main():
     print("\nTraining Complete.")
     writer.add_hparams({'lr': learning_rate, 'bsize': batch_size, "lrs_factor": LRS_FACTOR}, {'hparams/loss': best_loss, 'hparams/iou': best_iou}, run_name='.')
 
-    alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE))
+    alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE), final_metrics={'best_loss' : best_loss, 'best_iou': best_iou})
 
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ import glob
 import torchvision.transforms.functional as TF
 from PIL import Image
 from utils import resize_images
+import cv2
 
 
 class CustomCityscapesDataset(VisionDataset):
@@ -19,7 +20,7 @@ class CustomCityscapesDataset(VisionDataset):
 
     def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelTrainIds', transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 transforms: Optional[Callable] = None, split: bool = False, low_res: bool = True) -> None:
+                 transforms: Optional[Callable] = None, low_res: bool = True) -> None:
 
         super(CustomCityscapesDataset, self).__init__(root_dir, transforms, transform, target_transform)
 
@@ -28,7 +29,6 @@ class CustomCityscapesDataset(VisionDataset):
         self.target_dir = os.path.join(root_dir, f'gtFine{"_lowres" if low_res else ""}', mode)
         self.images = []
         self.targets = []
-        self.split = split
 
         # Set env var for cityscapeScripts preparation
         os.environ['CITYSCAPES_DATASET'] = root_dir
@@ -76,22 +76,16 @@ class CustomCityscapesDataset(VisionDataset):
                 self.targets.append(os.path.join(target_dir, target_name))
 
     def __len__(self) -> int:
-        return len(self.images) * 4 if self.split else len(self.images)
+        return len(self.images)
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         """
         :param index: The Index of the sample
         :return: (image, target) where target is the pixel level segmentation (labelIds) of the image
         """
-        idx, splt_idx = divmod(index, 4)
 
-        image = Image.open(self.images[index if not self.split else idx]).convert('RGB')
-        target = Image.open(self.targets[index if not self.split else idx])
-
-        if self.split:
-            img_splt = TF.five_crop(image, (image.size[0] // 4, image.size[1] // 4))
-            trg_splt = TF.five_crop(target, (target.size[0] // 4, target.size[1] // 4))
-            image, target = img_splt[splt_idx], trg_splt[splt_idx]
+        image = Image.open(self.images[index]).convert('RGB')
+        target = Image.open(self.targets[index])
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
@@ -105,7 +99,7 @@ class CustomCityscapesDataset(VisionDataset):
 
 
 def main():
-    train_data = CustomCityscapesDataset("../data/Cityscapes", split=False)
+    train_data = CustomCityscapesDataset("../data/Cityscapes")
 
 
 if __name__ == '__main__':
