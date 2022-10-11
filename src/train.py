@@ -20,7 +20,7 @@ LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
 NUM_EPOCHS = 400
-NUM_WORKERS = 2
+NUM_WORKERS = 1
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-3
@@ -159,7 +159,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"{args.runname or 'res34d_upConv_noAug_lrs'}_bs_{batch_size}_lr_{learning_rate}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"{args.runname or 'res34d_upConv_noAug_lrs_test'}_bs_{batch_size}_lr_{learning_rate}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -183,7 +183,7 @@ def main():
     # logging
     writer = SummaryWriter(log_dir=run_dir)
     best_loss = None
-    vest_iou = None
+    best_iou = None
     patience_counter = 0
 
     for epoch in range(NUM_EPOCHS):
@@ -203,6 +203,7 @@ def main():
         # early stopping
         if best_loss is None:
             best_loss = val_loss
+            best_iou = np.array(ious).sum() / len(ious)
         elif best_loss - val_loss > MIN_DELTA:
             patience_counter = 0
             best_loss = val_loss
@@ -220,7 +221,7 @@ def main():
         print(f"-------------------------------\n")
 
     print("\nTraining Complete.")
-    writer.add_hparams({'lr': learning_rate, 'bsize': batch_size, "lrs_factor": LRS_FACTOR}, {'hparams/loss': best_loss, 'hparams/iou': best_iou})
+    writer.add_hparams({'lr': learning_rate, 'bsize': batch_size, "lrs_factor": LRS_FACTOR}, {'hparams/loss': best_loss, 'hparams/iou': best_iou}, run_name='.')
 
     alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE))
 
