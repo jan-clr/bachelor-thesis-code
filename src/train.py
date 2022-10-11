@@ -39,7 +39,7 @@ def show_img_and_pred(img, target=None, prediction=None):
     total_plots = sum(x is not None for x in [img, target, prediction])
     i = 1
 
-    # show image
+    # show
     ax = plt.subplot(1, total_plots, i)
     plt.title('Image')
     plt.imshow(img[0].permute(1, 2, 0))
@@ -97,6 +97,7 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
     if writer is not None:
         writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=step)
         writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
+        writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], global_step=step)
 
     return losses, ious
 
@@ -142,16 +143,24 @@ def main():
     parser.add_argument("-enc", "--encoder", help="Name of the timm model to use as the encoder")
     parser.add_argument("-lr", help="Set the initial learning rate")
     parser.add_argument("-bs", help="Set the batch size")
+    parser.add_argument("-lrsp", help="Set the Patience for the learning rate scheduler")
+    parser.add_argument("-lrsf", help="Set the Factor used to reduce the learning rate")
 
     args = parser.parse_args()
 
     learning_rate = LEARNING_RATE
     batch_size = BATCH_SIZE
+    lr_patience = LR_PATIENCE
+    lrs_factor = LRS_FACTOR
 
     if args.lr is not None:
         learning_rate = float(args.lr)
     if args.bs is not None:
         batch_size = int(args.bs)
+    if args.lrsp is not None:
+        lr_patience = int(args.lrsp)
+    if args.lrsf is not None:
+        lrs_factor = int(args.lrsf)
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -159,7 +168,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"{args.runname or 'res34d_upConv_noAug_lrs_test'}_bs_{batch_size}_lr_{learning_rate}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -173,7 +182,7 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=LRS_FACTOR)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor)
 
     step = 0
     epoch_global = 0
@@ -221,7 +230,7 @@ def main():
         print(f"-------------------------------\n")
 
     print("\nTraining Complete.")
-    writer.add_hparams({'lr': learning_rate, 'bsize': batch_size, "lrs_factor": LRS_FACTOR}, {'hparams/loss': best_loss, 'hparams/iou': best_iou}, run_name='.')
+    writer.add_hparams({'lr': learning_rate, 'bsize': batch_size, "lrs_factor": lrs_factor, "lr_patience": lr_patience}, {'hparams/loss': best_loss, 'hparams/iou': best_iou}, run_name='.')
 
     alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE), final_metrics={'best_loss' : best_loss, 'best_iou': best_iou})
 
