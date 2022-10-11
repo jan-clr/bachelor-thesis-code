@@ -137,10 +137,17 @@ def get_loaders(data_dir):
 def main():
     parser = argparse.ArgumentParser(description="Start Model Training.")
 
-    parser.add_argument("-rn", "--runname")
-    parser.add_argument("-enc", "--encoder")
+    parser.add_argument("-rn", "--runname", help="Use a specific name for the run")
+    parser.add_argument("-enc", "--encoder", help="Name of the timm model to use as the encoder")
+    parser.add_argument("-lr", help="Set the initial learning rate")
+    parser.add_argument("-bs", help="Set the batch size")
 
     args = parser.parse_args()
+
+    if args.lr is not None:
+        LEARNING_RATE = float(args.lr)
+    if args.bs is not None:
+        BATCH_SIZE = int(args.bs)
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -162,7 +169,7 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=0.5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=0.1)
 
     step = 0
     epoch_global = 0
