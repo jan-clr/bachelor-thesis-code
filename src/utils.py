@@ -91,8 +91,17 @@ def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes:int, ignore_id
     return avg, np.array(ious)
 
 
-def resize_images(from_path, to_path, size, anti_aliasing=True):
+def perform_on_all_imgs(from_path, to_path, operations=None):
+    """
+    Performs a sequence of operations on all files found in a directory and saves the results to another directory.
+    :param from_path: Source dir
+    :param to_path: Target dir
+    :param operations: List of operations. Applied in sequential order, so make sure output and input of consecutive ops match. Output must be torch tensor(-like)
+    :return:
+    """
     # recreate dir structure
+    if operations is None:
+        operations = []
     Path(to_path).mkdir(parents=True, exist_ok=True)
 
     src_prefix = len(from_path) + len(os.path.sep)
@@ -107,13 +116,57 @@ def resize_images(from_path, to_path, size, anti_aliasing=True):
     ImageFile.LOAD_TRUNCATED_IMAGES = True
     i = 0
     for img_file in images:
-        img = Image.open(img_file)
-        resized = TF.resize(img, size,
-                            interpolation=InterpolationMode.BILINEAR if anti_aliasing else InterpolationMode.NEAREST)
-        resized.save(os.path.join(to_path, img_file[src_prefix:]))
+        transformed = Image.open(img_file)
+        for op in operations:
+            transformed = op(transformed)
+
+        transformed.save(os.path.join(to_path, img_file[src_prefix:]))
 
         i += 1
-        print(f"\rResized {i}/{len(images)}", end='')
+        print(f"\rTransformed {i}/{len(images)}", end='')
+
+
+def resize_images(from_path, to_path, size, anti_aliasing=True):
+    """
+    Resizes all images in dir
+    :param from_path:
+    :param to_path:
+    :param size:
+    :param anti_aliasing:
+    :return:
+    """
+    print("Resizing ----------------------")
+    operations = [lambda img :TF.resize(img, size,
+              interpolation=InterpolationMode.BILINEAR if anti_aliasing else InterpolationMode.NEAREST)]
+    perform_on_all_imgs(from_path, to_path, operations)
+    print('')
+
+
+def split_images(from_path, to_path, file_ext='png'):
+    print("Splitting ---------------------")# recreate dir structure
+    Path(to_path).mkdir(parents=True, exist_ok=True)
+
+    src_prefix = len(from_path) + len(os.path.sep)
+
+    for root, dirs, files in os.walk(from_path):
+        for dirname in dirs:
+            dirpath = os.path.join(to_path, root[src_prefix:], dirname)
+            Path(dirpath).mkdir(exist_ok=True)
+
+    images = glob(f"{from_path}/**/*.{file_ext}", recursive=True)
+
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    i = 0
+    for img_file in images:
+        img = Image.open(img_file)
+        split = TF.five_crop(img, size=[img.size[1] // 2, img.size[0] // 2])
+        for idx, crop in enumerate(split[:4]):
+            crop.save(os.path.join(to_path, f"{idx}_{img_file[src_prefix:]}"))
+
+        i += 1
+        print(f"\rTransformed {i}/{len(images)}", end='')
+
+    print('')
 
 
 def send_slack_msg(content, text="Fallback Alert"):

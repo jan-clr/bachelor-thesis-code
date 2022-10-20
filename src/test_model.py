@@ -5,7 +5,7 @@ import numpy as np
 import torch.optim as optim
 
 from transforms import transforms_train
-from cityscapes_dataset import CustomCityscapesDataset
+from datasets import CustomCityscapesDataset
 from model import CS_UNET, UnetResEncoder
 from utils import save_checkpoint, load_checkpoint, IoU
 

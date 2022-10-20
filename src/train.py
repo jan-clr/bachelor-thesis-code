@@ -12,7 +12,7 @@ import argparse
 # from datetime import datetime
 
 from transforms import transforms_train, transforms_val
-from cityscapes_dataset import CustomCityscapesDataset
+from datasets import CustomCityscapesDataset
 from model import CS_UNET, UnetResEncoder
 from utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
 
