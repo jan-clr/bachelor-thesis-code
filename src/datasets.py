@@ -51,7 +51,6 @@ class CustomCityscapesDataset(VisionDataset):
                     extract_archive(from_path=target_dir_zip, to_path=self.root_dir)
                     # generate label Ids for training
                     if id_to_use == 'labelTrainIds':
-                        self.classes = list(filter(lambda cs_class: cs_class.train_id not in [-1, 255], Cityscapes.classes))
                         if not glob.glob(f"{self.root_dir}/*/*/*/*labelTrainIds*"):
                             createTrainIdLabelImgs.main()
                     if low_res:
@@ -61,6 +60,9 @@ class CustomCityscapesDataset(VisionDataset):
                     raise RuntimeError(
                         f"Dataset at '{root_dir}' not found or incomplete. Please make sure all required folders for the"
                         ' specified "mode" are inside the "root" directory')
+
+        if id_to_use == 'labelTrainIds':
+            self.classes = list(filter(lambda cs_class: cs_class.train_id not in [-1, 255], Cityscapes.classes))
 
         target_file_ending = f'gtFine_{id_to_use}.png'
 
@@ -102,6 +104,8 @@ class VapourData(VisionDataset):
     """
 
     """
+    classes = [{'id': 0, 'name': 'background'}, {'id': 1, 'name': 'droplet_border'}, {'id': 2, 'name': 'droplet_inside'}]
+
     def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelIds', transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
                  transforms: Optional[Callable] = None, low_res: bool = False, split: bool = True) -> None:
