@@ -166,6 +166,7 @@ def main():
     lr_patience = LR_PATIENCE
     lrs_factor = LRS_FACTOR
     model_to_load = LOAD_PATH
+    nr_to_use = None
 
     if args.lr is not None:
         learning_rate = float(args.lr)
@@ -177,6 +178,8 @@ def main():
         lrs_factor = float(args.lrsf)
     if args.mf is not None:
         model_to_load = args.mf
+    if args.red is not None:
+        nr_to_use = int(args.red)
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -191,7 +194,7 @@ def main():
     current_dataset = DATASET_NAME
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
-    train_loader, val_loader = get_vap_loaders(data_dir, args.red)
+    train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
 
     out_ch = len(train_loader.dataset.classes)
 
