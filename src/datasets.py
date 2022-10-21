@@ -108,7 +108,7 @@ class VapourData(VisionDataset):
 
     def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelIds', transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 transforms: Optional[Callable] = None, low_res: bool = False, split: bool = True) -> None:
+                 transforms: Optional[Callable] = None, low_res: bool = False, split: bool = True, nr_to_use=None) -> None:
 
         super(VapourData, self).__init__(root_dir, transforms, transform, target_transform)
 
@@ -176,6 +176,10 @@ class VapourData(VisionDataset):
             )
             self.images.append(os.path.join(self.image_dir, file_name))
             self.targets.append(os.path.join(self.target_dir, target_name))
+
+        if nr_to_use is not None:
+            self.images = self.images[:nr_to_use]
+            self.targets = self.targets[:nr_to_use]
 
     def __len__(self) -> int:
         return len(self.images)

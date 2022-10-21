@@ -12,7 +12,7 @@ import argparse
 # from datetime import datetime
 
 from transforms import transforms_train, transforms_val
-from datasets import CustomCityscapesDataset
+from datasets import CustomCityscapesDataset, VapourData
 from model import CS_UNET, UnetResEncoder
 from utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
 
@@ -31,7 +31,7 @@ PIN_MEMORY = True
 CONTINUE = False
 LOAD_PATH = None
 ROOT_DATA_DIR = '../data'
-DATASET_NAME = 'Cityscapes'
+DATASET_NAME = 'vapourbase'
 
 
 def show_img_and_pred(img, target=None, prediction=None):
@@ -127,9 +127,19 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
     return losses, ious
 
 
-def get_loaders(data_dir):
+def get_cs_loaders(data_dir):
     train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val)
+
+    train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
+    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
+
+    return train_dataloader, val_dataloader
+
+
+def get_vap_loaders(data_dir, nr_to_use):
+    train_data = VapourData(data_dir, transforms=transforms_train, nr_to_use=nr_to_use)
+    val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
@@ -147,6 +157,7 @@ def main():
     parser.add_argument("-lrsp", help="Set the Patience for the learning rate scheduler")
     parser.add_argument("-lrsf", help="Set the Factor used to reduce the learning rate")
     parser.add_argument("-mf", help="Load from non default file")
+    parser.add_argument("-rn", help="Use a reduced number of samples from the dataset if possible")
 
     args = parser.parse_args()
 
@@ -180,7 +191,7 @@ def main():
     current_dataset = DATASET_NAME
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
-    train_loader, val_loader = get_loaders(data_dir)
+    train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
 
     out_ch = len(train_loader.dataset.classes)
 
