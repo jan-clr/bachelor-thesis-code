@@ -181,6 +181,8 @@ class VapourData(VisionDataset):
             self.images = self.images[:nr_to_use]
             self.targets = self.targets[:nr_to_use]
 
+        print(f"Using {len(self.images)} samples.")
+
     def __len__(self) -> int:
         return len(self.images)
 
