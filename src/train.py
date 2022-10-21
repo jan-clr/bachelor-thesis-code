@@ -199,7 +199,6 @@ def main():
     out_ch = len(train_loader.dataset.classes)
 
     print(out_ch)
-    quit()
 
     model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d').to(DEVICE)
 
