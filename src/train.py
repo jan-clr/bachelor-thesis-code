@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter  # to print to tensorboard
 from tqdm import tqdm
 import inquirer
 import argparse
-# from datetime import datetime
+from datetime import datetime
 
 from transforms import transforms_train, transforms_val
 from datasets import CustomCityscapesDataset, VapourData
@@ -31,7 +31,7 @@ PIN_MEMORY = True
 CONTINUE = False
 LOAD_PATH = None
 ROOT_DATA_DIR = '../data'
-DATASET_NAME = 'vapourbase'
+DATASET_NAME = 'Cityscapes'
 
 
 def show_img_and_pred(img, target=None, prediction=None):
@@ -187,14 +187,15 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}"  # _{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}
+    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}_{datetime.now().strftime('%d-%m-%Y %H-%M-%S')} "
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
     current_dataset = DATASET_NAME
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
-    train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
+    # train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
+    train_loader, val_loader = get_cs_loaders(data_dir)
 
     out_ch = len(train_loader.dataset.classes)
 
