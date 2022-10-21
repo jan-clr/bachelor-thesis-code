@@ -23,7 +23,7 @@ NUM_EPOCHS = 400
 NUM_WORKERS = 1
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
-MIN_DELTA = 1e-3
+MIN_DELTA = 1e-4
 ES_PATIENCE = 20
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
@@ -205,7 +205,7 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=lr_patience, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor)
 
     step = 0
     epoch_global = 0
