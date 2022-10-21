@@ -104,7 +104,7 @@ class VapourData(VisionDataset):
     """
 
     """
-    classes = [{'id': 0, 'name': 'background'}, {'id': 1, 'name': 'droplet_streak'}, {'id': 2, 'name': 'droplet_border'}, {'id': 3, 'name': 'droplet_inside'}]
+    classes = [{'id': 0, 'name': 'background'}, {'id': 1, 'name': 'droplet_border'}, {'id': 2, 'name': 'droplet_inside'}]
 
     def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelIds', transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,

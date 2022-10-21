@@ -216,7 +216,7 @@ def main():
     print("\nBeginning Training\n")
     # logging
     writer = SummaryWriter(log_dir=run_dir)
-    images = next(iter(train_loader))[0].to(DEVICE)
+    images = next(iter(train_loader))[0]
     writer.add_graph(model, images)
     best_loss = None
     best_iou = None
