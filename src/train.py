@@ -28,7 +28,8 @@ ES_PATIENCE = 20
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 PIN_MEMORY = True
-LOAD_MODEL = False
+CONTINUE = False
+LOAD_PATH = None
 ROOT_DATA_DIR = '../data'
 DATASET_NAME = 'Cityscapes'
 
@@ -145,6 +146,7 @@ def main():
     parser.add_argument("-bs", help="Set the batch size")
     parser.add_argument("-lrsp", help="Set the Patience for the learning rate scheduler")
     parser.add_argument("-lrsf", help="Set the Factor used to reduce the learning rate")
+    parser.add_argument("-mf", help="Load from non default file")
 
     args = parser.parse_args()
 
@@ -152,6 +154,7 @@ def main():
     batch_size = BATCH_SIZE
     lr_patience = LR_PATIENCE
     lrs_factor = LRS_FACTOR
+    model_to_load = LOAD_PATH
 
     if args.lr is not None:
         learning_rate = float(args.lr)
@@ -161,6 +164,8 @@ def main():
         lr_patience = int(args.lrsp)
     if args.lrsf is not None:
         lrs_factor = float(args.lrsf)
+    if args.mf is not None:
+        model_to_load = args.mf
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -177,7 +182,12 @@ def main():
 
     train_loader, val_loader = get_loaders(data_dir)
 
-    model = UnetResEncoder(in_ch=3, out_ch=len(train_loader.dataset.classes), encoder_name=args.encoder or 'resnet34d').to(DEVICE)
+    out_ch = len(train_loader.dataset.classes)
+
+    print(out_ch)
+    quit()
+
+    model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d').to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
@@ -186,11 +196,14 @@ def main():
 
     step = 0
     epoch_global = 0
-    if LOAD_MODEL:
+    if CONTINUE:
         step, epoch_global = load_checkpoint(run_file, model, optimizer, scheduler)
+    elif model_to_load is not None:
+        load_checkpoint(model_to_load, model, except_layers=['final.weight', 'final.bias'], strict=False)
     print("\nBeginning Training\n")
     # logging
     writer = SummaryWriter(log_dir=run_dir)
+    writer.add_graph(model)
     best_loss = None
     best_iou = None
     patience_counter = 0

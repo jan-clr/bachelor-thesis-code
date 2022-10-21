@@ -186,7 +186,7 @@ class VapourData(VisionDataset):
         :return: (image, target) where target is the pixel level segmentation (labelIds) of the image
         """
 
-        image = Image.open(self.images[index]).convert('L')
+        image = Image.open(self.images[index]).convert('RGB')
         target = Image.open(self.targets[index])
 
         if self.transforms is not None:

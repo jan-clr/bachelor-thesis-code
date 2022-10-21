@@ -31,10 +31,11 @@ def save_checkpoint(model, optimizer=None, scheduler=None, step=0, epoch_global=
     torch.save(checkpoint, filename)
 
 
-def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None) -> (int, int):
+def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None, strict=True, except_layers=[]) -> (int, int):
     """
     Loads the models (and optimizers) parameters from a checkpoint file.
 
+    :param strict: Use strict loading
     :param scheduler: The scheduler whose parameters to load if not None
     :param checkpoint_file: The path of the checkpoint file
     :param model: The model whose parameters to load
@@ -43,7 +44,9 @@ def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None)
     """
     print("=> Loading checkpoint")
     checkpoint = torch.load(checkpoint_file)
-    model.load_state_dict(checkpoint["state_dict"])
+    pretrained_dict = checkpoint["state_dict"]
+    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k not in except_layers}
+    model.load_state_dict(pretrained_dict, strict=strict)
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint["optimizer"])
     if scheduler is not None:
