@@ -157,7 +157,7 @@ def main():
     parser.add_argument("-lrsp", help="Set the Patience for the learning rate scheduler")
     parser.add_argument("-lrsf", help="Set the Factor used to reduce the learning rate")
     parser.add_argument("-mf", help="Load from non default file")
-    parser.add_argument("-rn", help="Use a reduced number of samples from the dataset if possible")
+    parser.add_argument("-red", help="Use a reduced number of samples from the dataset if possible")
 
     args = parser.parse_args()
 
@@ -191,7 +191,7 @@ def main():
     current_dataset = DATASET_NAME
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
-    train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
+    train_loader, val_loader = get_vap_loaders(data_dir, args.red)
 
     out_ch = len(train_loader.dataset.classes)
 
