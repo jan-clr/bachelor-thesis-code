@@ -24,7 +24,7 @@ NUM_WORKERS = 1
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 30
+ES_PATIENCE = 40
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 PIN_MEMORY = True
@@ -128,8 +128,8 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
 
 
 def get_cs_loaders(data_dir):
-    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train)
-    val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val)
+    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train, low_res=False)
+    val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=False)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
