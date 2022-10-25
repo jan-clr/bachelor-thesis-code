@@ -24,7 +24,7 @@ NUM_WORKERS = 1
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 20
+ES_PATIENCE = 30
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 PIN_MEMORY = True
@@ -187,7 +187,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}_{datetime.now().strftime('%d-%m-%Y %H-%M-%S')} "
+    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}_p_{ES_PATIENCE}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')} "
     run_dir = f"../runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -206,7 +206,7 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=lr_patience, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=lr_patience, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor, cooldown=(ES_PATIENCE - lr_patience))
 
     step = 0
     epoch_global = 0
