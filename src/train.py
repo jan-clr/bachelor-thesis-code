@@ -10,6 +10,7 @@ from tqdm import tqdm
 import inquirer
 import argparse
 from datetime import datetime
+import gc
 
 from transforms import transforms_train, transforms_val
 from datasets import CustomCityscapesDataset, VapourData
@@ -86,6 +87,8 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
         jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred, 1), 1), ground_truth=y,
                                   n_classes=len(loader.dataset.classes))
 
+        del X, y
+
         losses.append(float(loss.item()))
         ious.append(jaccard_idx)
 
@@ -115,6 +118,8 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
             loss = loss_fn(pred, y)
             jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred.float(), 1), 1), ground_truth=y,
                                       n_classes=len(loader.dataset.classes))
+
+            del X, y
             losses.append(loss.item())
             ious.append(jaccard_idx)
 
@@ -230,6 +235,9 @@ def main():
                    step=epoch_global)
 
         save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=run_file)
+        # Try flushing GPU cache before validation for large datasets
+        torch.cuda.empty_cache()
+        gc.collect()
 
         # if epoch_global % 10 == 0:
         #     save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=f"{run_dir}/model_{epoch_global}.pth.tar")
