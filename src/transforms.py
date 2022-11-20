@@ -14,7 +14,8 @@ def transforms_train(image, mask):
 	:return:
 	"""
 	image = np.array(image)
-	mask = np.array(mask)
+	if mask is not None:
+		mask = np.array(mask)
 
 	transform = A.Compose([
 		A.RandomCrop(224, 224),
@@ -25,9 +26,13 @@ def transforms_train(image, mask):
 		ToTensorV2(),
 	])
 
-	augmented = transform(image=image, mask=mask)
+	if mask is not None:
+		augmented = transform(image=image, mask=mask)
+		mask = augmented["mask"].long()
+	else:
+		augmented = transform(image=image)
+
 	image = augmented["image"]
-	mask = augmented["mask"].long()
 
 	return image, mask
 
