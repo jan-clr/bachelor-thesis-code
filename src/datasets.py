@@ -18,9 +18,13 @@ class CustomCityscapesDataset(VisionDataset):
     # Based on https://github.com/mcordts/cityscapesScripts
     classes = Cityscapes.classes
 
-    def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelTrainIds', transform: Optional[Callable] = None,
+    def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelTrainIds',
+                 transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 transforms: Optional[Callable] = None, low_res: bool = True) -> None:
+                 transforms: Optional[Callable] = None,
+                 low_res: bool = True,
+                 use_labeled: slice = None,
+                 use_unlabeled: slice = None) -> None:
 
         super(CustomCityscapesDataset, self).__init__(root_dir, transforms, transform, target_transform)
 
@@ -37,7 +41,8 @@ class CustomCityscapesDataset(VisionDataset):
         # look for full res files or zips if dirs not present
         if not os.path.isdir(self.image_dir) or not os.path.isdir(self.target_dir):
             # when using downsampled images, check if full res images available
-            imdir_full, tardir_full = os.path.join(root_dir, 'leftImg8bit', mode), os.path.join(root_dir, 'gtFine', mode)
+            imdir_full, tardir_full = os.path.join(root_dir, 'leftImg8bit', mode), os.path.join(root_dir, 'gtFine',
+                                                                                                mode)
             if low_res and os.path.isdir(imdir_full) and os.path.isdir(tardir_full):
                 resize_images(from_path=imdir_full, to_path=self.image_dir, size=(256, 512))
                 resize_images(from_path=tardir_full, to_path=self.target_dir, size=(256, 512), anti_aliasing=False)
@@ -55,7 +60,8 @@ class CustomCityscapesDataset(VisionDataset):
                             createTrainIdLabelImgs.main()
                     if low_res:
                         resize_images(from_path=imdir_full, to_path=self.image_dir, size=(256, 512))
-                        resize_images(from_path=tardir_full, to_path=self.target_dir, size=(256, 512), anti_aliasing=False)
+                        resize_images(from_path=tardir_full, to_path=self.target_dir, size=(256, 512),
+                                      anti_aliasing=False)
                 else:
                     raise RuntimeError(
                         f"Dataset at '{root_dir}' not found or incomplete. Please make sure all required folders for the"
@@ -77,8 +83,21 @@ class CustomCityscapesDataset(VisionDataset):
                 self.images.append(os.path.join(img_dir, file_name))
                 self.targets.append(os.path.join(target_dir, target_name))
 
+        # default use all images with targets
+        self.labeled_idxs = [idx for idx in range(len(self.images))]
+        self.unlabeled_idxs = []
+
+        # Update lists if arguments are set
+        if use_labeled is not None:
+            self.labeled_idxs = self.labeled_idxs[use_labeled]
+        if use_unlabeled is not None:
+            self.unlabeled_idxs = [idx for idx in range(len(self.images))][use_unlabeled]
+
+        # make unlabeled slices take priority and ensure no overlap
+        self.labeled_idxs = [idx for idx in self.labeled_idxs if idx not in self.unlabeled_idxs]
+
     def __len__(self) -> int:
-        return len(self.images)
+        return len(self.labeled_idxs) + len(self.unlabeled_idxs)
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         """
@@ -87,7 +106,13 @@ class CustomCityscapesDataset(VisionDataset):
         """
 
         image = Image.open(self.images[index]).convert('RGB')
-        target = Image.open(self.targets[index])
+        target = None
+        if index in self.labeled_idxs:
+            target = Image.open(self.targets[index])
+        elif index in self.unlabeled_idxs:
+            target = None
+        else:
+            raise IndexError("Index is neither in labeled nor in unlabeled subset.")
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
@@ -104,17 +129,24 @@ class VapourData(VisionDataset):
     """
 
     """
-    classes = [{'id': 0, 'name': 'background'}, {'id': 1, 'name': 'droplet_streak'}, {'id': 2, 'name': 'droplet_border'}, {'id': 3, 'name': 'droplet_inside'}]
+    classes = [{'id': 0, 'name': 'background'}, {'id': 1, 'name': 'droplet_streak'},
+               {'id': 2, 'name': 'droplet_border'}, {'id': 3, 'name': 'droplet_inside'}]
 
-    def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelIds', transform: Optional[Callable] = None,
+    def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelIds',
+                 transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
-                 transforms: Optional[Callable] = None, low_res: bool = False, split: bool = True, nr_to_use=None) -> None:
+                 transforms: Optional[Callable] = None, low_res: bool = False, split: bool = True,
+                 nr_to_use=None,
+                 use_labeled: slice = None,
+                 use_unlabeled: slice = None) -> None:
 
         super(VapourData, self).__init__(root_dir, transforms, transform, target_transform)
 
         self.root_dir = root_dir
-        self.image_dir = os.path.join(root_dir, f'leftImg8bit{"_lowres" if low_res else ""}{"_split" if split else ""}', mode)
-        self.target_dir = os.path.join(root_dir, f'gtFine{"_lowres" if low_res else ""}{"_split" if split else ""}', mode)
+        self.image_dir = os.path.join(root_dir, f'leftImg8bit{"_lowres" if low_res else ""}{"_split" if split else ""}',
+                                      mode)
+        self.target_dir = os.path.join(root_dir, f'gtFine{"_lowres" if low_res else ""}{"_split" if split else ""}',
+                                       mode)
         self.images = []
         self.targets = []
 
@@ -125,7 +157,8 @@ class VapourData(VisionDataset):
             print("Data not found with specified parameters. Trying to reconstruct.")
 
             # when using downsampled images, check if full res images available
-            self.image_dir, self.target_dir = os.path.join(root_dir, tl_imdir, mode), os.path.join(root_dir, tl_tardir, mode)
+            self.image_dir, self.target_dir = os.path.join(root_dir, tl_imdir, mode), os.path.join(root_dir, tl_tardir,
+                                                                                                   mode)
 
             # Try to extract zips if unzipped files are not present
             image_dir_zip = os.path.join(self.root_dir, 'leftImg8bit.zip')
@@ -148,7 +181,8 @@ class VapourData(VisionDataset):
                 tardir_to = os.path.join(root_dir, tl_tardir, mode)
 
             # resize if necessary
-            if low_res and os.path.isdir(self.image_dir) and os.path.isdir(self.target_dir) and not (os.path.isdir(imdir_to) and os.path.isdir(tardir_to)):
+            if low_res and os.path.isdir(self.image_dir) and os.path.isdir(self.target_dir) and not (
+                    os.path.isdir(imdir_to) and os.path.isdir(tardir_to)):
                 resize_images(from_path=self.image_dir, to_path=imdir_to, size=(256, 512))
                 resize_images(from_path=self.target_dir, to_path=tardir_to, size=(256, 512), anti_aliasing=False)
 
@@ -161,7 +195,8 @@ class VapourData(VisionDataset):
                 tardir_to = os.path.join(root_dir, tl_tardir, mode)
 
             # Save crops if necessary
-            if split and os.path.isdir(self.image_dir) and os.path.isdir(self.target_dir) and not (os.path.isdir(imdir_to) and os.path.isdir(tardir_to)):
+            if split and os.path.isdir(self.image_dir) and os.path.isdir(self.target_dir) and not (
+                    os.path.isdir(imdir_to) and os.path.isdir(tardir_to)):
                 split_images(from_path=self.image_dir, to_path=imdir_to, file_ext='tif')
                 split_images(from_path=self.target_dir, to_path=tardir_to)
 
@@ -181,10 +216,23 @@ class VapourData(VisionDataset):
             self.images = self.images[:nr_to_use]
             self.targets = self.targets[:nr_to_use]
 
+        # default use all images with targets
+        self.labeled_idxs = [idx for idx in range(len(self.images))]
+        self.unlabeled_idxs = []
+
+        # Update lists if arguments are set
+        if use_labeled is not None:
+            self.labeled_idxs = self.labeled_idxs[use_labeled]
+        if use_unlabeled is not None:
+            self.unlabeled_idxs = [idx for idx in range(len(self.images))][use_unlabeled]
+
+        # make unlabeled slices take priority and ensure no overlap
+        self.labeled_idxs = [idx for idx in self.labeled_idxs if idx not in self.unlabeled_idxs]
+
         print(f"Using {len(self.images)} samples.")
 
     def __len__(self) -> int:
-        return len(self.images)
+        return len(self.labeled_idxs) + len(self.unlabeled_idxs)
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         """
@@ -193,7 +241,13 @@ class VapourData(VisionDataset):
         """
 
         image = Image.open(self.images[index]).convert('RGB')
-        target = Image.open(self.targets[index])
+        target = None
+        if index in self.labeled_idxs:
+            target = Image.open(self.targets[index])
+        elif index in self.unlabeled_idxs:
+            target = None
+        else:
+            raise IndexError("Index is neither in labeled nor in unlabeled subset.")
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
