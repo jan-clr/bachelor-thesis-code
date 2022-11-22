@@ -7,7 +7,7 @@ from cityscapesscripts.preparation import createTrainIdLabelImgs
 import glob
 import torchvision.transforms.functional as TF
 from PIL import Image
-from utils import resize_images, split_images
+from src.utils import resize_images, split_images
 import cv2
 
 

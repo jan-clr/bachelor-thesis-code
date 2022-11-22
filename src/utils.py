@@ -16,7 +16,7 @@ load_dotenv()
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 
-def save_checkpoint(model, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
+def save_checkpoint(model, teacher_model=None, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
     checkpoint = {
 	    "state_dict": model.state_dict(),
         "steps": step,
@@ -26,12 +26,14 @@ def save_checkpoint(model, optimizer=None, scheduler=None, step=0, epoch_global=
         checkpoint["optimizer"] = optimizer.state_dict()
     if scheduler is not None:
         checkpoint["scheduler"] = scheduler.state_dict()
+    if teacher_model is not None:
+        checkpoint["teacher_dict"] = teacher_model.state_dict()
 
     print("=> Saving checkpoint")
     torch.save(checkpoint, filename)
 
 
-def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None, strict=True, except_layers=[]) -> (int, int):
+def load_checkpoint(checkpoint_file: str, model, teacher_model=None, optimizer=None, scheduler=None, strict=True, except_layers=[]) -> (int, int):
     """
     Loads the models (and optimizers) parameters from a checkpoint file.
 
@@ -51,6 +53,8 @@ def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None,
         optimizer.load_state_dict(checkpoint["optimizer"])
     if scheduler is not None:
         scheduler.load_state_dict(checkpoint["scheduler"])
+    if teacher_model is not None:
+        teacher_model.load_state_dict(checkpoint["teacher_dict"])
 
     return checkpoint['steps'], checkpoint["epochs"]
 
@@ -82,7 +86,7 @@ def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes:int, ignore_id
         intersection = (pred_inds[target_inds]).long().sum().data.cpu().item()  # Cast to long to prevent overflows
         union = pred_inds.long().sum().data.cpu().item() + target_inds.long().sum().data.cpu().item() - intersection
         if union == 0:
-            ious.append(float('nan'))  # If there is no ground truth, do not include in evaluation
+            ious.append(float('nan'))  # If there is no ground truth and no prediction, do not include in evaluation
         else:
             ious.append(float(intersection) / float(max(union, 1)))
 
