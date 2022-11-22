@@ -11,10 +11,12 @@ import inquirer
 import argparse
 from datetime import datetime
 
-from transforms import transforms_train, transforms_val
-from datasets import CustomCityscapesDataset, VapourData
-from model import CS_UNET, UnetResEncoder
-from utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
+from src.transforms import transforms_train, transforms_val
+from src.datasets import CustomCityscapesDataset, VapourData
+from src.model import CS_UNET, UnetResEncoder
+from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
+from src.lib.mean_teacher.data import TwoStreamBatchSampler
+
 
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -32,6 +34,24 @@ CONTINUE = False
 LOAD_PATH = None
 ROOT_DATA_DIR = '../data'
 DATASET_NAME = 'Cityscapes'
+
+
+def update_teacher_params(student_model: nn.Module, teacher_model : nn.Module, alpha, global_step):
+    """
+    Update the parameters of the teacher model when using the Mean Teacher semi-supervised learning approach. Code authored by CuriousAI.
+    https://github.com/CuriousAI/mean-teacher/blob/546348ff863c998c26be4339021425df973b4a36/pytorch/main.py#L189
+
+    :param student_model: the student model
+    :param teacher_model: the teacher model, which is an ema of the student
+    :param alpha: smoothing coefficient
+    :param global_step: the overall steps the model has been trained for
+    :return:
+    """
+    # ramp up alpha over the course of training
+    alpha = min(1 - 1 / (global_step + 1), alpha)
+    # iterate through param dicts
+    for teacher_param, student_param in zip(teacher_model.parameters(), student_model.parameters()):
+        teacher_param.data.mul_(alpha).add_(1 - alpha, student_param.data)
 
 
 def show_img_and_pred(img, target=None, prediction=None):
@@ -60,11 +80,13 @@ def show_img_and_pred(img, target=None, prediction=None):
     plt.show()
 
 
-def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
+def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0, epoch=0):
     size = len(loader.dataset)
     losses = []
     ious = []
     loop = tqdm(enumerate(loader), total=len(loader), leave=False)
+    steps = step
+
     for batch, (X, y) in loop:
         X = X.float().to(DEVICE)
         # y is still long for some reason
@@ -96,14 +118,61 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0):
         loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
 
     if writer is not None:
-        writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=step)
-        writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
-        writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], global_step=step)
+        writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=epoch)
+        writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=epoch)
+        writer.add_scalar('Training/Learning Rate', optimizer.param_groups[0]['lr'], global_step=epoch)
 
-    return losses, ious
+    return losses, ious, steps
 
 
-def val_fn(loader, model, loss_fn, step=0, writer=None):
+def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, consistency_fn, writer=None, step=0, epoch=0):
+    size = len(loader.dataset)
+    losses = []
+    ious = []
+    loop = tqdm(enumerate(loader), total=len(loader), leave=False)
+    steps = step
+
+    for batch, ((input_stu, input_tch), target) in loop:
+
+        # input is still long for some reason
+        input_stu = input_stu.float().to(DEVICE)
+        input_tch = input_tch.float().to(DEVICE)
+        target = target.to(DEVICE)
+        # print(y.min(), y.max(), torch.unique(y))
+
+        # Compute predictions
+        pred_stu = student_model(input_stu)
+        pred_tch = teacher_model(input_tch)
+
+        # calculate losses depending on labeled or unlabeled samples
+        consistency_loss = consistency_fn(pred_stu, pred_tch)
+        loss = consistency_loss
+        if target is not None:
+            class_loss = loss_fn(pred_stu, target)
+            loss += class_loss
+
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred_stu, 1), 1), ground_truth=target,
+                                  n_classes=len(loader.dataset.classes))
+
+        losses.append(float(loss.item()))
+        ious.append(jaccard_idx)
+
+        loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
+        
+        if writer is not None:
+            writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=epoch)
+            writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=epoch)
+            writer.add_scalar('Training/Learning Rate', optimizer.param_groups[0]['lr'], global_step=epoch)
+
+        return losses, ious, steps
+    
+
+def val_fn(loader, model, loss_fn, epoch=0, writer=None):
     model.eval()
     losses = []
     ious = []
@@ -119,8 +188,8 @@ def val_fn(loader, model, loss_fn, step=0, writer=None):
             ious.append(jaccard_idx)
 
     if writer is not None:
-        writer.add_scalar('Validation/Loss', np.array(losses).sum() / len(losses), global_step=step)
-        writer.add_scalar('Validation/Jaccard Index', np.array(ious).sum() / len(ious), global_step=step)
+        writer.add_scalar('Validation/Loss', np.array(losses).sum() / len(losses), global_step=epoch)
+        writer.add_scalar('Validation/Jaccard Index', np.array(ious).sum() / len(ious), global_step=epoch)
 
     model.train()
 
@@ -227,7 +296,7 @@ def main():
         epoch_global += 1
         print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
         train_loop(loader=train_loader, model=model, optimizer=optimizer, loss_fn=loss_fn, writer=writer,
-                   step=epoch_global)
+                   step=step, epoch=epoch_global)
 
         save_checkpoint(model, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=run_file)
 
