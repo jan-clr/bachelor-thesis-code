@@ -217,7 +217,8 @@ def get_cs_loaders_mt(data_dir):
     train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt, low_res=True, use_labeled=slice(0,1000), use_unlabeled=slice(1000, None))
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
-    train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=TwoStreamBatchSampler(train_data.labeled_idxs, train_data.unlabeled_idxs, batch_size=BATCH_SIZE, secondary_batch_size=BATCH_SIZE // 4))
+    sampler = TwoStreamBatchSampler(train_data.labeled_idxs, train_data.unlabeled_idxs, batch_size=BATCH_SIZE, secondary_batch_size=3 * BATCH_SIZE // 4)
+    train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=sampler)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
 
     return train_dataloader, val_dataloader
@@ -276,8 +277,6 @@ def main():
     model_to_load = LOAD_PATH
     labelrng = None
     unlabelrng = None
-
-    print(args)
 
     if args.lr is not None:
         learning_rate = float(args.lr)
