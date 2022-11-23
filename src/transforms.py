@@ -49,7 +49,7 @@ def transforms_train_mt(image, mask):
 		augmented_same = transform_same(image=image, mask=mask)
 		images = transform_diff({'image': augmented_same['image']})
 		# Mask alone cannot be transformed
-		mask = ToTensorV2()(image=augmented_same["mask"])['image'].long()
+		mask = ToTensorV2()(image=np.zeros_like(image), mask=augmented_same["mask"])['mask'].long()
 	else:
 		augmented_same = transform_same(image=image)
 		images = transform_diff({'image': augmented_same['image']})
