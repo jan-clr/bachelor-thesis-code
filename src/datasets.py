@@ -1,4 +1,6 @@
 import os
+
+import numpy as np
 from torchvision.datasets import VisionDataset
 from torchvision.datasets.cityscapes import Cityscapes
 from torchvision.datasets.utils import extract_archive
@@ -9,6 +11,9 @@ import torchvision.transforms.functional as TF
 from PIL import Image
 from src.utils import resize_images, split_images
 import cv2
+
+
+NO_LABEL = 255
 
 
 class CustomCityscapesDataset(VisionDataset):
@@ -110,7 +115,7 @@ class CustomCityscapesDataset(VisionDataset):
         if index in self.labeled_idxs:
             target = Image.open(self.targets[index])
         elif index in self.unlabeled_idxs:
-            target = None
+            target = np.full((image.size[0], image.size[1]), NO_LABEL, dtype='uint8')
         else:
             raise IndexError("Index is neither in labeled nor in unlabeled subset.")
 
@@ -245,7 +250,7 @@ class VapourData(VisionDataset):
         if index in self.labeled_idxs:
             target = Image.open(self.targets[index])
         elif index in self.unlabeled_idxs:
-            target = None
+            target = np.full((image.size[0], image.size[1]), NO_LABEL)
         else:
             raise IndexError("Index is neither in labeled nor in unlabeled subset.")
 

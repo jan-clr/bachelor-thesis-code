@@ -14,7 +14,6 @@ class TransformTwice:
 		self.transform = transform
 
 	def __call__(self, inp):
-		print(inp)
 		out1 = self.transform(**inp)
 		out2 = self.transform(**inp)
 		return out1, out2
@@ -49,10 +48,13 @@ def transforms_train_mt(image, mask):
 	if mask is not None:
 		augmented_same = transform_same(image=image, mask=mask)
 		images = transform_diff({'image': augmented_same['image']})
-		mask = ToTensorV2()(mask=augmented_same["mask"])['mask'].long()
+		# Mask alone cannot be transformed
+		mask = ToTensorV2()(image=augmented_same["mask"])['image'].long()
 	else:
 		augmented_same = transform_same(image=image)
 		images = transform_diff({'image': augmented_same['image']})
+
+	images = (images[0]['image'], images[1]['image'])
 
 	return images, mask
 

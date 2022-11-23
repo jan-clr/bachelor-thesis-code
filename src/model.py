@@ -153,7 +153,7 @@ def pairwise_iter(iterable):
 
 
 def test():
-	x = torch.randn((1, 3, 512, 256))
+	x = torch.randn((4, 3, 512, 256))
 	model = UnetResEncoder()
 	model.eval()
 	out = model(x)
