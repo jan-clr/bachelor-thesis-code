@@ -31,11 +31,12 @@ MIN_DELTA = 1e-4
 ES_PATIENCE = 40
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
+LRS_ENABLED = True
 PIN_MEMORY = True
-CONTINUE = False
+CONTINUE = True
 LOAD_PATH = None
-CONSISTENCY = 100.0
-CONSISTENCY_RAMPUP_LENGTH = 5
+CONSISTENCY = 1.0
+CONSISTENCY_RAMPUP_LENGTH = 20
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
 EMA_DECAY = 0.999
@@ -133,6 +134,8 @@ def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0, epoch=0):
 def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, consistency_fn, writer=None, step=0, epoch=0):
     size = len(loader.dataset)
     losses = []
+    class_losses = []
+    consistency_losses = []
     ious = []
     loop = tqdm(enumerate(loader), total=len(loader), leave=False)
     steps = step
@@ -155,7 +158,6 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
         class_loss = loss_fn(pred_stu, target)
 
         loss = consistency_weight * consistency_loss + class_loss
-
         # Backpropagation
         optimizer.zero_grad()
         loss.backward()
@@ -166,6 +168,8 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
                                   n_classes=len(loader.dataset.classes))
 
         losses.append(float(loss.item()))
+        class_losses.append(float(class_loss.item()))
+        consistency_losses.append(float(consistency_loss.item()))
         ious.append(jaccard_idx)
 
         loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
@@ -174,7 +178,10 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
     if writer is not None:
         writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=epoch)
         writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=epoch)
+        writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(ious), global_step=epoch)
+        writer.add_scalar('Training/Class Loss', np.array(class_losses).sum() / len(ious), global_step=epoch)
         writer.add_scalar('Training/Learning Rate', optimizer.param_groups[0]['lr'], global_step=epoch)
+        writer.add_scalar('Training/Consistency Weight', consistency_weight, global_step=epoch)
 
     return losses, ious, steps
     
@@ -267,6 +274,7 @@ def main():
     parser.add_argument("-mf", help="Load from non default file")
     parser.add_argument("-lblr", "--labeledrange", help="Use this range of the dataset as labeled samples.", type=string_to_slice)
     parser.add_argument("-ulblr", "--unlabeledrange", help="Use this range of the dataset as unlabeled samples.", type=string_to_slice)
+    parser.add_argument("--lrs", help="Set if learning rate scheduler schould be used", action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
@@ -274,9 +282,11 @@ def main():
     batch_size = BATCH_SIZE
     lr_patience = LR_PATIENCE
     lrs_factor = LRS_FACTOR
+    lrs_enabled = LRS_ENABLED
     model_to_load = LOAD_PATH
     labelrng = None
     unlabelrng = None
+
 
     if args.lr is not None:
         learning_rate = float(args.lr)
@@ -292,6 +302,8 @@ def main():
         labelrng=args.labeledrange
     if args.unlabeledrange is not None:
         unlabelrng=args.unlabeledrange
+    if args.lrs is not None:
+        lrs_enabled=args.lrs
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -299,7 +311,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}_p_{ES_PATIENCE}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')} "
+    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}_p_{ES_PATIENCE}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}" if not CONTINUE else f"{args.runname or 'test'}"
     run_dir = f"./runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
@@ -320,7 +332,7 @@ def main():
     consisteny_loss_fn = softmax_mse_loss
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=lr_patience, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor, cooldown=(ES_PATIENCE - lr_patience))
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=lr_patience, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor, cooldown=(ES_PATIENCE - lr_patience)) if lrs_enabled else None
 
     step = 0
     epoch_global = 0
