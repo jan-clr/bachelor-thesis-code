@@ -359,7 +359,8 @@ def main():
 
         losses, ious = val_fn(val_loader, teacher, loss_fn, epoch_global, writer)
         val_loss = np.array(losses).sum() / len(losses)
-        scheduler.step(val_loss)
+        if lrs_enabled:
+            scheduler.step(val_loss)
         # early stopping
         if best_loss is None:
             best_loss = val_loss
