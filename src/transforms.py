@@ -36,25 +36,32 @@ def transforms_train_mt(image, mask):
 		A.HorizontalFlip(p=0.5),
 	])
 
-	transform_diff = TransformTwice(A.Compose([
+	transform_student = A.Compose([
 		A.GaussNoise(var_limit=0.15),
 		A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
 		A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
 		ToTensorV2()
-	]))
+	])
+
+	transform_teacher = A.Compose([
+		A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+		ToTensorV2()
+	])
 
 	images = None
 
 	if mask is not None:
 		augmented_same = transform_same(image=image, mask=mask)
-		images = transform_diff({'image': augmented_same['image']})
+		image_student = transform_student(image=augmented_same['image'])
+		image_teacher = transform_teacher(image=augmented_same['image'])
+		images = (image_student, image_teacher)
 		# Mask alone cannot be transformed
 		mask = ToTensorV2()(image=np.zeros_like(image), mask=augmented_same["mask"])['mask'].long()
 	else:
 		augmented_same = transform_same(image=image)
-		images = transform_diff({'image': augmented_same['image']})
-
-	images = (images[0]['image'], images[1]['image'])
+		image_student = transform_student(image=augmented_same['image'])
+		image_teacher = transform_teacher(image=augmented_same['image'])
+		images = (image_student, image_teacher)
 
 	return images, mask
 
