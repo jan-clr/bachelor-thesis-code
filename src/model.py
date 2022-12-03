@@ -86,8 +86,13 @@ class UnetResEncoder(nn.Module):
 		UNET Implementation using pretrained ResNet as Encoder
 	"""
 
-	def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34', freeze_encoder=False):
+	def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34', freeze_encoder=False, dropout_p=None):
 		super(UnetResEncoder, self).__init__()
+
+		if dropout_p is not None:
+			self.dropout = nn.Dropout(p=dropout_p)
+		else:
+			self.dropout = None
 
 		self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch)
 		feature_steps = self.encoder.feature_info.channels()
@@ -120,6 +125,8 @@ class UnetResEncoder(nn.Module):
 			x = up_step[0](x)
 			# concat downwards result
 			x = torch.cat((out_down[i + 1], x), dim=1)
+			if self.dropout is not None:
+				x = self.dropout(x)
 			# perform DoubleConv
 			x = up_step[1](x)
 

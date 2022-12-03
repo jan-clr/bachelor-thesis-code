@@ -33,13 +33,14 @@ LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 LRS_ENABLED = True
 PIN_MEMORY = True
-CONTINUE = True
+CONTINUE = False
 LOAD_PATH = None
 CONSISTENCY = 1.0
-CONSISTENCY_RAMPUP_LENGTH = 20
+CONSISTENCY_RAMPUP_LENGTH = 10
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
 EMA_DECAY = 0.999
+MT_DELAY = 15
 
 
 def update_teacher_params(student_model: nn.Module, teacher_model : nn.Module, alpha, global_step):
@@ -57,7 +58,11 @@ def update_teacher_params(student_model: nn.Module, teacher_model : nn.Module, a
     alpha = min(1 - 1 / (global_step + 1), alpha)
     # iterate through param dicts
     for teacher_param, student_param in zip(teacher_model.parameters(), student_model.parameters()):
-        teacher_param.data.mul_(alpha).add_(1 - alpha, student_param.data)
+        teacher_param.data.mul_(alpha).add_(student_param.data, alpha=(1 - alpha))
+    # iterate through buffer dicts
+    for teacher_buffer, student_buffer in zip(teacher_model.buffers(), student_model.buffers()):
+        # Doing it the same way as params produces error saying it can't be cast to float, even though the buffers previous type is float
+        teacher_buffer.data = torch.mul(teacher_buffer.data, alpha).add_(student_buffer.data, alpha=(1 - alpha))
 
 
 def show_img_and_pred(img, target=None, prediction=None):
@@ -139,22 +144,24 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
     ious = []
     loop = tqdm(enumerate(loader), total=len(loader), leave=False)
     steps = step
+    skip_teacher = epoch <= MT_DELAY
 
     for batch, ((input_stu, input_tch), target) in loop:
 
         # input is still long for some reason
         input_stu = input_stu.float().to(DEVICE)
-        input_tch = input_tch.float().to(DEVICE)
+        if not skip_teacher:
+            input_tch = input_tch.float().to(DEVICE)
         target = target.to(DEVICE)
         # print(y.min(), y.max(), torch.unique(y))
 
         # Compute predictions
         pred_stu = student_model(input_stu)
-        pred_tch = teacher_model(input_tch)
+        pred_tch = teacher_model(input_tch) if not skip_teacher else None
 
         # calculate losses depending on labeled or unlabeled samples
-        consistency_loss = consistency_fn(pred_stu, pred_tch)
-        consistency_weight = get_current_consistency_weight(epoch)
+        consistency_loss = consistency_fn(pred_stu, pred_tch) if not skip_teacher else 0
+        consistency_weight = get_current_consistency_weight(epoch - MT_DELAY)
         class_loss = loss_fn(pred_stu, target)
 
         loss = consistency_weight * consistency_loss + class_loss
@@ -169,7 +176,8 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
 
         losses.append(float(loss.item()))
         class_losses.append(float(class_loss.item()))
-        consistency_losses.append(float(consistency_loss.item()))
+        if not skip_teacher:
+            consistency_losses.append(float(consistency_loss.item()))
         ious.append(jaccard_idx)
 
         loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
@@ -178,7 +186,8 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
     if writer is not None:
         writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=epoch)
         writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=epoch)
-        writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(ious), global_step=epoch)
+        if not skip_teacher:
+            writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(ious), global_step=epoch)
         writer.add_scalar('Training/Class Loss', np.array(class_losses).sum() / len(ious), global_step=epoch)
         writer.add_scalar('Training/Learning Rate', optimizer.param_groups[0]['lr'], global_step=epoch)
         writer.add_scalar('Training/Consistency Weight', consistency_weight, global_step=epoch)
@@ -186,7 +195,7 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
     return losses, ious, steps
     
 
-def val_fn(loader, model, loss_fn, epoch=0, writer=None):
+def val_fn(loader, model, loss_fn, epoch=0, writer=None, writer_suffix=''):
     model.eval()
     losses = []
     ious = []
@@ -202,8 +211,8 @@ def val_fn(loader, model, loss_fn, epoch=0, writer=None):
             ious.append(jaccard_idx)
 
     if writer is not None:
-        writer.add_scalar('Validation/Loss', np.array(losses).sum() / len(losses), global_step=epoch)
-        writer.add_scalar('Validation/Jaccard Index', np.array(ious).sum() / len(ious), global_step=epoch)
+        writer.add_scalar(f'Validation/Loss{" " + writer_suffix if writer_suffix != "" else ""}', np.array(losses).sum() / len(losses), global_step=epoch)
+        writer.add_scalar(f'Validation/Jaccard Index{" " + writer_suffix if writer_suffix != "" else ""}', np.array(ious).sum() / len(ious), global_step=epoch)
 
     model.train()
 
@@ -220,8 +229,8 @@ def get_cs_loaders(data_dir):
     return train_dataloader, val_dataloader
 
 
-def get_cs_loaders_mt(data_dir):
-    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt, low_res=True, use_labeled=slice(0,1000), use_unlabeled=slice(1000, None))
+def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
+    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt, low_res=True, use_labeled=lbl_range, use_unlabeled=unlbl_range)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
     sampler = TwoStreamBatchSampler(train_data.labeled_idxs, train_data.unlabeled_idxs, batch_size=BATCH_SIZE, secondary_batch_size=3 * BATCH_SIZE // 4)
@@ -241,8 +250,8 @@ def get_vap_loaders(data_dir):
     return train_dataloader, val_dataloader
 
 
-def get_vap_loaders_mt(data_dir):
-    train_data = VapourData(data_dir, transforms=transforms_train, use_labeled=slice(0,1000), use_unlabeled=slice(1000, None))
+def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
+    train_data = VapourData(data_dir, transforms=transforms_train, use_labeled=lbl_range, use_unlabeled=unlbl_range)
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
     train_dataloader = DataLoader(train_data, shuffle=True, pin_memory=PIN_MEMORY, batch_sampler=TwoStreamBatchSampler(train_data.labeled_idxs, train_data.unlabeled_idxs, batch_size=BATCH_SIZE, secondary_batch_size=BATCH_SIZE // 4))
@@ -274,7 +283,10 @@ def main():
     parser.add_argument("-mf", help="Load from non default file")
     parser.add_argument("-lblr", "--labeledrange", help="Use this range of the dataset as labeled samples.", type=string_to_slice)
     parser.add_argument("-ulblr", "--unlabeledrange", help="Use this range of the dataset as unlabeled samples.", type=string_to_slice)
-    parser.add_argument("--lrs", help="Set if learning rate scheduler schould be used", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--lrs", help="Set if learning rate scheduler should be used", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--dropout", help="Set model dropout rate")
+    parser.add_argument("--dropout_tch", help="Set teacher dropout rate when using MT")
+    parser.add_argument("--mtdelay", help="Set a number of epochs to train only on labeled data before mean teacher sets in")
 
     args = parser.parse_args()
 
@@ -286,7 +298,9 @@ def main():
     model_to_load = LOAD_PATH
     labelrng = None
     unlabelrng = None
-
+    dropout = None
+    dropout_teach = None
+    global MT_DELAY
 
     if args.lr is not None:
         learning_rate = float(args.lr)
@@ -304,6 +318,12 @@ def main():
         unlabelrng=args.unlabeledrange
     if args.lrs is not None:
         lrs_enabled=args.lrs
+    if args.dropout is not None:
+        dropout = float(args.dropout)
+    if args.dropout_tch is not None:
+        dropout_teach = float(args.dropout_tch)
+    if args.mtdelay is not None:
+        MT_DELAY = int(args.mtdelay)
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -319,17 +339,17 @@ def main():
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
     # train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
-    train_loader, val_loader = get_cs_loaders_mt(data_dir)
+    train_loader, val_loader = get_cs_loaders_mt(data_dir, lbl_range=labelrng if labelrng is not None else slice(None, None), unlbl_range=unlabelrng if unlabelrng is not None else slice(0, 0))
 
     out_ch = len(train_loader.dataset.classes)
 
     print(out_ch)
 
-    model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d').to(DEVICE)
-    teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d').to(DEVICE)
+    model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=dropout).to(DEVICE)
+    teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=dropout_teach).to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
-    consisteny_loss_fn = softmax_mse_loss
+    consistency_loss_fn = softmax_mse_loss
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=lr_patience, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor, cooldown=(ES_PATIENCE - lr_patience)) if lrs_enabled else None
@@ -352,12 +372,13 @@ def main():
     for epoch in range(NUM_EPOCHS):
         epoch_global += 1
         print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
-        _, _, step = train_loop_mt(loader=train_loader, student_model=model, teacher_model=teacher, optimizer=optimizer, loss_fn=loss_fn, consistency_fn=consisteny_loss_fn, writer=writer,
+        _, _, step = train_loop_mt(loader=train_loader, student_model=model, teacher_model=teacher, optimizer=optimizer, loss_fn=loss_fn, consistency_fn=consistency_loss_fn, writer=writer,
                    step=step, epoch=epoch_global)
 
         save_checkpoint(model, teacher_model=teacher, optimizer=optimizer, scheduler=scheduler, epoch_global=epoch_global, filename=run_file)
 
-        losses, ious = val_fn(val_loader, teacher, loss_fn, epoch_global, writer)
+        losses, ious = val_fn(val_loader, teacher, loss_fn, epoch_global, writer, writer_suffix='Teacher')
+        val_fn(val_loader, model, loss_fn, epoch_global, writer, writer_suffix='Student')
         val_loss = np.array(losses).sum() / len(losses)
         if lrs_enabled:
             scheduler.step(val_loss)

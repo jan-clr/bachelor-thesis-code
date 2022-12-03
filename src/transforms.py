@@ -54,14 +54,14 @@ def transforms_train_mt(image, mask):
 		augmented_same = transform_same(image=image, mask=mask)
 		image_student = transform_student(image=augmented_same['image'])
 		image_teacher = transform_teacher(image=augmented_same['image'])
-		images = (image_student, image_teacher)
+		images = (image_student['image'], image_teacher['image'])
 		# Mask alone cannot be transformed
 		mask = ToTensorV2()(image=np.zeros_like(image), mask=augmented_same["mask"])['mask'].long()
 	else:
 		augmented_same = transform_same(image=image)
 		image_student = transform_student(image=augmented_same['image'])
 		image_teacher = transform_teacher(image=augmented_same['image'])
-		images = (image_student, image_teacher)
+		images = (image_student['image'], image_teacher['image'])
 
 	return images, mask
 
