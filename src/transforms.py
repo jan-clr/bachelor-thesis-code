@@ -10,6 +10,7 @@ class TransformTwice:
 	"""
 	Slight alteration to mean_teachers TransformTwice to be Compatible with Albumentations
 	"""
+
 	def __init__(self, transform):
 		self.transform = transform
 
@@ -37,8 +38,8 @@ def transforms_train_mt(image, mask):
 	])
 
 	transform_student = A.Compose([
-		#A.GaussNoise(var_limit=0.15),
-                A.ColorJitter(),
+		A.GaussNoise(var_limit=0.15),
+		A.ColorJitter(),
 		A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
 		A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
 		ToTensorV2()
