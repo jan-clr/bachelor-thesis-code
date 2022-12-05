@@ -10,6 +10,6 @@ def cross_entropy_cons_loss(pred_stu: torch.Tensor, pred_tch: torch.Tensor):
 	:return:
 	"""
 	loss_fn = nn.CrossEntropyLoss()
-	nn.functional.softmax(pred_tch, dim=1)
+	probs_tch = nn.functional.softmax(pred_tch, dim=1)
 
-	return loss_fn(pred_stu, pred_tch)
+	return loss_fn(pred_stu, probs_tch)
