@@ -28,19 +28,19 @@ NUM_WORKERS = 1
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 40
+ES_PATIENCE = 200
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 LRS_ENABLED = True
 PIN_MEMORY = True
 CONTINUE = False
 LOAD_PATH = None
-CONSISTENCY = 1.0
-CONSISTENCY_RAMPUP_LENGTH = 10
+CONSISTENCY = 0.1
+CONSISTENCY_RAMPUP_LENGTH = 100
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
 EMA_DECAY = 0.999
-MT_DELAY = 15
+MT_DELAY = 5
 
 
 def update_teacher_params(student_model: nn.Module, teacher_model : nn.Module, alpha, global_step):
@@ -331,7 +331,7 @@ def main():
         if not answers['proceed']:
             exit()
 
-    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}_p_{ES_PATIENCE}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}" if not CONTINUE else f"{args.runname or 'test'}"
+    run_name = f"{args.runname or 'test'}_lrsp_{lr_patience}_lrsf_{lrs_factor}_bs_{batch_size}_lr_{learning_rate}_p_{ES_PATIENCE}_cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}" if not CONTINUE else f"{args.runname or 'test'}"
     run_dir = f"./runs/{DATASET_NAME}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
