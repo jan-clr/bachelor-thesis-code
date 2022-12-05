@@ -15,6 +15,7 @@ from src.transforms import transforms_train, transforms_train_mt, transforms_val
 from src.datasets import CustomCityscapesDataset, VapourData
 from src.model import CS_UNET, UnetResEncoder
 from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
+from src.losses import cross_entropy_cons_loss
 from src.lib.mean_teacher.data import TwoStreamBatchSampler
 from src.lib.mean_teacher.losses import softmax_mse_loss
 from src.lib.mean_teacher.ramps import sigmoid_rampup
@@ -28,18 +29,18 @@ NUM_WORKERS = 1
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 200
+ES_PATIENCE = 50
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 LRS_ENABLED = True
 PIN_MEMORY = True
 CONTINUE = False
 LOAD_PATH = None
-CONSISTENCY = 0.1
-CONSISTENCY_RAMPUP_LENGTH = 100
+CONSISTENCY = 1.0
+CONSISTENCY_RAMPUP_LENGTH = 15
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
-EMA_DECAY = 0.999
+EMA_DECAY = 0.998
 MT_DELAY = 5
 
 
@@ -349,7 +350,7 @@ def main():
     teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=dropout_teach).to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
-    consistency_loss_fn = softmax_mse_loss
+    consistency_loss_fn = cross_entropy_cons_loss
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=lr_patience, threshold=MIN_DELTA, threshold_mode='abs', verbose=True, factor=lrs_factor, cooldown=(ES_PATIENCE - lr_patience)) if lrs_enabled else None

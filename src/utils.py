@@ -16,21 +16,6 @@ load_dotenv()
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 
-def softmax_mse_loss(stu_logits, tch_logits):
-    """
-    Takes softmax on both sides and returns MSE loss
-    Authored by CuriousAI, see
-    :param stu_logits: The logits of the student model (gradient applied)
-    :param tch_logits: The logits of the teacher model (no gradient applied)
-    :return: MSE loss of softmax's
-    """
-    assert stu_logits.size() == tch_logits.size()
-    stu_softmax = torch.nn.functional.softmax(stu_logits, dim=1)
-    tch_softmax = torch.nn.functional.softmax(tch_logits, dim=1)
-    num_classes = stu_logits.size()[1]
-    return torch.nn.functional.mse_loss(stu_softmax, tch_softmax, size_average=False) / num_classes
-
-
 def save_checkpoint(model, teacher_model=None, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
     checkpoint = {
 	    "state_dict": model.state_dict(),
