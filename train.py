@@ -39,6 +39,7 @@ CONSISTENCY = 1.0
 CONSISTENCY_RAMPUP_LENGTH = 15
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
+MT_ENABLED = True
 EMA_DECAY = 0.998
 MT_DELAY = 5
 DROPOUT = None
@@ -298,6 +299,8 @@ def main():
 	                    type=string_to_slice)
 	parser.add_argument("--lrs", help="Set if learning rate scheduler should be used",
 	                    action=argparse.BooleanOptionalAction)
+	parser.add_argument("--mt", help="Set if mean teacher should be used",
+	                    action=argparse.BooleanOptionalAction)
 	parser.add_argument("--dropout", help="Set model dropout rate")
 	parser.add_argument("--dropout_tch", help="Set teacher dropout rate when using MT")
 	parser.add_argument("--mtdelay",
@@ -313,6 +316,7 @@ def main():
 	global LOAD_PATH
 	global DROPOUT
 	global DROPOUT_TEACHER
+	global MT_ENABLED
 	global MT_DELAY
 	label_rng = None
 	unlabel_rng = None
@@ -332,7 +336,9 @@ def main():
 	if args.unlabeledrange is not None:
 		unlabel_rng = args.unlabeledrange
 	if args.lrs is not None:
-		lrs_enabled = args.lrs
+		LRS_ENABLED = args.lrs
+	if args.mt is not None:
+		MT_ENABLED = args.mt
 	if args.dropout is not None:
 		DROPOUT = float(args.dropout)
 	if args.dropout_tch is not None:
@@ -346,7 +352,12 @@ def main():
 		if not answers['proceed']:
 			exit()
 
-	run_name = f"{args.runname or 'test'}_lrsp_{LR_PATIENCE}_lrsf_{LRS_FACTOR}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}_p_{ES_PATIENCE}_cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}" if not CONTINUE else f"{args.runname or 'test'}"
+	run_name = (
+		f"{args.runname or 'test'}_lrsp_{LR_PATIENCE}_lrsf_{LRS_FACTOR}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}_p_{ES_PATIENCE}_"
+		+ (f"cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_" if MT_ENABLED else '')
+		+ f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}"
+		if not CONTINUE else
+		f"{args.runname or 'test'}")
 	run_dir = f"./runs/{DATASET_NAME}/{run_name}"
 	run_file = f"{run_dir}/model.pth.tar"
 
@@ -354,9 +365,11 @@ def main():
 	data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
 	# train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
-	train_loader, val_loader = get_cs_loaders_mt(data_dir,
-	                                             lbl_range=label_rng if label_rng is not None else slice(None, None),
-	                                             unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0))
+	train_loader, val_loader = (get_cs_loaders_mt(data_dir,
+	                                              lbl_range=label_rng if label_rng is not None else slice(None, None),
+	                                              unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0))
+	                            if MT_ENABLED else
+	                            get_cs_loaders(data_dir=data_dir))
 
 	out_ch = len(train_loader.dataset.classes)
 
@@ -365,7 +378,7 @@ def main():
 	model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=DROPOUT).to(
 		DEVICE)
 	teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d',
-	                         dropout_p=DROPOUT_TEACHER).to(DEVICE)
+	                         dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED else None
 
 	loss_fn = nn.CrossEntropyLoss(ignore_index=255)
 	consistency_loss_fn = cross_entropy_cons_loss
@@ -373,7 +386,7 @@ def main():
 	optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 	scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
 	                                                 threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
-	                                                 cooldown=(ES_PATIENCE - LR_PATIENCE)) if lrs_enabled else None
+	                                                 cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
 
 	step = 0
 	epoch_global = 0
@@ -382,6 +395,7 @@ def main():
 		                                     scheduler=scheduler)
 	elif LOAD_PATH is not None:
 		load_checkpoint(LOAD_PATH, model, except_layers=['final.weight', 'final.bias'], strict=False)
+
 	print("\nBeginning Training\n")
 	# logging
 	writer = SummaryWriter(log_dir=run_dir)
@@ -394,9 +408,18 @@ def main():
 	for epoch in range(NUM_EPOCHS):
 		epoch_global += 1
 		print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
-		_, _, step = train_loop_mt(loader=train_loader, student_model=model, teacher_model=teacher, optimizer=optimizer,
-		                           loss_fn=loss_fn, consistency_fn=consistency_loss_fn, writer=writer,
-		                           step=step, epoch=epoch_global)
+		_, _, step = (
+			train_loop_mt(loader=train_loader, student_model=model, teacher_model=teacher, optimizer=optimizer,
+			              loss_fn=loss_fn, consistency_fn=consistency_loss_fn, writer=writer,
+			              step=step, epoch=epoch_global)
+			if MT_ENABLED else
+			train_loop(loader=train_loader,
+			           model=model,
+			           optimizer=optimizer,
+			           loss_fn=loss_fn,
+			           writer=writer,
+			           step=step,
+			           epoch=epoch_global))
 
 		save_checkpoint(model, teacher_model=teacher, optimizer=optimizer, scheduler=scheduler,
 		                epoch_global=epoch_global, filename=run_file)
@@ -404,7 +427,7 @@ def main():
 		losses, ious = val_fn(val_loader, teacher, loss_fn, epoch_global, writer, writer_suffix='Teacher')
 		val_fn(val_loader, model, loss_fn, epoch_global, writer, writer_suffix='Student')
 		val_loss = np.array(losses).sum() / len(losses)
-		if lrs_enabled:
+		if LRS_ENABLED:
 			scheduler.step(val_loss)
 		# early stopping
 		if best_loss is None:
