@@ -427,8 +427,13 @@ def main():
 		save_checkpoint(model, teacher_model=teacher, optimizer=optimizer, scheduler=scheduler,
 		                epoch_global=epoch_global, filename=run_file)
 
-		losses, ious = val_fn(val_loader, teacher, loss_fn, epoch_global, writer, writer_suffix='Teacher')
-		val_fn(val_loader, model, loss_fn, epoch_global, writer, writer_suffix='Student')
+		losses, ious = [], []
+		if MT_ENABLED:
+			losses, ious = val_fn(val_loader, teacher, loss_fn, epoch_global, writer, writer_suffix='Teacher')
+			val_fn(val_loader, model, loss_fn, epoch_global, writer, writer_suffix='Student')
+		else:
+			losses, ious = val_fn(val_loader, model, loss_fn, epoch_global, writer)
+
 		val_loss = np.array(losses).sum() / len(losses)
 		if LRS_ENABLED:
 			scheduler.step(val_loss)
