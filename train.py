@@ -226,8 +226,9 @@ def val_fn(loader, model, loss_fn, epoch=0, writer=None, writer_suffix=''):
 	return losses, ious
 
 
-def get_cs_loaders(data_dir):
-	train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train, low_res=False)
+def get_cs_loaders(data_dir, lbl_range, unlbl_range):
+	train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt, low_res=True, use_labeled=lbl_range,
+	                                     use_unlabeled=unlbl_range)
 	val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=False)
 
 	train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
@@ -249,8 +250,8 @@ def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
 	return train_dataloader, val_dataloader
 
 
-def get_vap_loaders(data_dir):
-	train_data = VapourData(data_dir, transforms=transforms_train)
+def get_vap_loaders(data_dir, lbl_range, unlbl_range):
+	train_data = VapourData(data_dir, transforms=transforms_train, use_labeled=lbl_range, use_unlabeled=unlbl_range)
 	val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
 	train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
@@ -369,7 +370,9 @@ def main():
 	                                              lbl_range=label_rng if label_rng is not None else slice(None, None),
 	                                              unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0))
 	                            if MT_ENABLED else
-	                            get_cs_loaders(data_dir=data_dir))
+	                            get_cs_loaders(data_dir=data_dir,
+	                                           lbl_range=label_rng if label_rng is not None else slice(None, None),
+	                                           unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0)))
 
 	out_ch = len(train_loader.dataset.classes)
 
