@@ -227,7 +227,7 @@ def val_fn(loader, model, loss_fn, epoch=0, writer=None, writer_suffix=''):
 
 
 def get_cs_loaders(data_dir, lbl_range, unlbl_range):
-	train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt, low_res=True, use_labeled=lbl_range,
+	train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train, low_res=True, use_labeled=lbl_range,
 	                                     use_unlabeled=unlbl_range)
 	val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=False)
 
