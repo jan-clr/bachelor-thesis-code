@@ -28,20 +28,20 @@ NUM_WORKERS = 1
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 50
+ES_PATIENCE = 80
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 LRS_ENABLED = True
 PIN_MEMORY = True
 CONTINUE = False
 LOAD_PATH = None
-CONSISTENCY = 1.0
-CONSISTENCY_RAMPUP_LENGTH = 15
+CONSISTENCY = 0.5
+CONSISTENCY_RAMPUP_LENGTH = 100
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
 MT_ENABLED = True
 EMA_DECAY = 0.998
-MT_DELAY = 5
+MT_DELAY = 10
 DROPOUT = None
 DROPOUT_TEACHER = None
 
@@ -229,7 +229,9 @@ def val_fn(loader, model, loss_fn, epoch=0, writer=None, writer_suffix=''):
 def get_cs_loaders(data_dir, lbl_range, unlbl_range):
 	train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train, low_res=True, use_labeled=lbl_range,
 	                                     use_unlabeled=unlbl_range)
-	val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=False)
+	val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
+
+	print(len(train_data))
 
 	train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY)
 	val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY)
@@ -355,7 +357,7 @@ def main():
 
 	run_name = (
 		f"{args.runname or 'test'}_lrsp_{LR_PATIENCE}_lrsf_{LRS_FACTOR}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}_p_{ES_PATIENCE}_"
-		+ (f"cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_" if MT_ENABLED else '')
+		+ (f"cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_emad_{EMA_DECAY}_" if MT_ENABLED else '')
 		+ f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}"
 		if not CONTINUE else
 		f"{args.runname or 'test'}")
