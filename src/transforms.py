@@ -32,6 +32,7 @@ def transforms_train_mt(image, mask):
 		mask = np.array(mask)
 
 	transform_same = A.Compose([
+		A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
 		A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
 		A.RandomCrop(224, 224),
 		A.HorizontalFlip(p=0.5),
@@ -41,12 +42,10 @@ def transforms_train_mt(image, mask):
 		A.GaussNoise(var_limit=0.15),
 		A.ColorJitter(),
 		A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
-		A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
 		ToTensorV2()
 	])
 
 	transform_teacher = A.Compose([
-		A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
 		ToTensorV2()
 	])
 
