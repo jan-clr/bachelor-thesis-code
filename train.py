@@ -13,7 +13,7 @@ import argparse
 from datetime import datetime
 
 from src.masks import CowMaskGenerator
-from src.transforms import transforms_train, transforms_train_mt, transforms_val
+from src.transforms import transforms_train, transforms_train_mt, transforms_train_mt_basic, transforms_val
 from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
 from src.model import CS_UNET, UnetResEncoder
 from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
@@ -385,14 +385,14 @@ def get_cs_loaders(data_dir, lbl_range, unlbl_range):
 
 
 def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
-    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt, low_res=True, use_labeled=lbl_range,
+    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt_basic, low_res=True, use_labeled=lbl_range,
                                          use_unlabeled=unlbl_range)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
     sampler = TwoStreamBatchSampler(train_data.unlabeled_idxs, train_data.labeled_idxs, batch_size=BATCH_SIZE,
-                                    secondary_batch_size=BATCH_SIZE // 4)
+                                    secondary_batch_size=BATCH_SIZE - BATCH_SIZE_UNLABELED)
     train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=sampler,
-                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR, collate_fn=collate_split_batches)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
                                 worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
@@ -419,8 +419,8 @@ def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
     train_dataloader = DataLoader(train_data, shuffle=True, pin_memory=PIN_MEMORY,
                                   batch_sampler=TwoStreamBatchSampler(train_data.labeled_idxs,
                                                                       train_data.unlabeled_idxs, batch_size=BATCH_SIZE,
-                                                                      secondary_batch_size=BATCH_SIZE // 4),
-                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+                                                                      secondary_batch_size=BATCH_SIZE - BATCH_SIZE_UNLABELED),
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR, collate_fn=collate_split_batches)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
                                 worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
