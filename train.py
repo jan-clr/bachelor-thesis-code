@@ -24,24 +24,24 @@ from src.lib.mean_teacher.ramps import sigmoid_rampup
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
-NUM_EPOCHS = 400
+NUM_EPOCHS = 600
 NUM_WORKERS = 8
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 80
+ES_PATIENCE = 100
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 LRS_ENABLED = True
 PIN_MEMORY = True
 CONTINUE = False
 LOAD_PATH = None
-CONSISTENCY = 0.5
-CONSISTENCY_RAMPUP_LENGTH = 100
+CONSISTENCY = 0.003
+CONSISTENCY_RAMPUP_LENGTH = 50
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
 MT_ENABLED = True
-EMA_DECAY = 0.998
+EMA_DECAY = 0.99
 MT_DELAY = 10
 DROPOUT = None
 DROPOUT_TEACHER = None
@@ -270,7 +270,7 @@ def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
                                          use_unlabeled=unlbl_range)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
-    sampler = TwoStreamBatchSampler(train_data.labeled_idxs, train_data.unlabeled_idxs, batch_size=BATCH_SIZE,
+    sampler = TwoStreamBatchSampler(train_data.unlabeled_idxs, train_data.labeled_idxs, batch_size=BATCH_SIZE,
                                     secondary_batch_size=3 * BATCH_SIZE // 4)
     train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=sampler, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
