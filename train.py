@@ -12,8 +12,9 @@ import inquirer
 import argparse
 from datetime import datetime
 
+from src.masks import CowMaskGenerator
 from src.transforms import transforms_train, transforms_train_mt, transforms_val
-from src.datasets import CustomCityscapesDataset, VapourData
+from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
 from src.model import CS_UNET, UnetResEncoder
 from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
 from src.losses import cross_entropy_cons_loss
@@ -24,6 +25,7 @@ from src.lib.mean_teacher.ramps import sigmoid_rampup
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
+BATCH_SIZE_UNLABELED = 12
 NUM_EPOCHS = 600
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 224
@@ -46,7 +48,28 @@ MT_DELAY = 10
 DROPOUT = None
 DROPOUT_TEACHER = None
 GENERATOR = None
+CONS_LS_ON_LABELED_SAMPLES = True
 DEV = True
+USE_COWMASK = True
+
+
+def collate_split_batches(batch):
+    """
+    Collates lists of labeled and unlabeled samples into separate sub batches.
+    Unlabeled samples are identified by their targets only containing NO_LABEL as values.
+
+    :param batch: A list of (input, target) tuples
+    :return: labeled inputs, labels, unlabeled inputs
+    """
+    input_labeled, input_unlabeled, labels = [], [], []
+    for (input, target) in batch:
+        if (target == NO_LABEL).all():
+            input_unlabeled.append(input)
+        else:
+            input_labeled.append(input)
+            labels.append(target)
+
+    return torch.stack(input_labeled), torch.stack(labels), torch.stack(input_unlabeled)
 
 
 def seed_worker(worker_id):
@@ -55,7 +78,7 @@ def seed_worker(worker_id):
     :param worker_id: worker_id [0, ..., NUM_WORKER - 1]
     :return:
     """
-    worker_seed = torch.initial_seed() % 2**32
+    worker_seed = torch.initial_seed() % 2 ** 32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
@@ -118,6 +141,21 @@ def show_img_and_pred(img, target=None, prediction=None):
         plt.imshow(prediction[0])
         i += 1
     plt.show()
+
+
+class Trainer(object):
+    def __init__(self, model, optimizer, train_loader, val_loader, loss_fn, run_name, teacher=None, consistency_fn=None,
+                 step=0, epoch_global=0):
+        self.model = model
+        self.optimizer = optimizer
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.loss_fn = loss_fn
+        self.run_name = run_name
+        self.teacher = teacher,
+        self.consistency_fn = consistency_fn
+        self.step = step
+        self.epoch_global = epoch_global
 
 
 def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0, epoch=0):
@@ -226,6 +264,85 @@ def train_loop_mt(loader, student_model, teacher_model, optimizer, loss_fn, cons
     return losses, ious, steps
 
 
+def train_loop_mt_split_batches(loader, student_model, teacher_model, optimizer, loss_fn, consistency_fn, writer=None,
+                                step=0,
+                                epoch=0, mask_loader=None):
+    losses = []
+    class_losses = []
+    consistency_losses = []
+    ious = []
+    loop = tqdm(enumerate(loader), total=len(loader), leave=False)
+    steps = step
+    skip_teacher = epoch <= MT_DELAY
+
+    for batch, (input_labeled, target, input_unlabeled) in loop:
+
+        # input is still long for some reason
+        input_unlabeled = input_unlabeled.float().to(DEVICE)
+        if not skip_teacher:
+            input_unlabeled = input_unlabeled.float().to(DEVICE)
+        target = target.to(DEVICE)
+        # print(y.min(), y.max(), torch.unique(y))
+
+        consistency_loss = 0
+
+        # Compute predictions
+        pred_stu_labeled = student_model(input_labeled)
+        if not skip_teacher:
+            pred_tch_unlabeled = teacher_model(input_unlabeled)
+            pred_tch_labeled = teacher_model(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
+            if USE_COWMASK:
+                mixed_inputs, mixed_labels = [], []
+                masks = next(mask_loader)
+                for i in range(len(input_unlabeled), 2):
+                    mixed_inputs.append(
+                        input_unlabeled[i] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * input_unlabeled[i + 1])
+                    mixed_labels.append(pred_tch_unlabeled[i] * torch.squeeze(masks[int(i / 2)], dim=1) + (
+                            1 - torch.squeeze(masks[int(i / 2)], dim=1)) * pred_tch_unlabeled[i + 1])
+                input_unlabeled = torch.stack(mixed_inputs)
+                pred_tch_unlabeled = torch.squeeze(torch.stack(mixed_labels))
+            pred_stu_unlabeled = student_model(input_unlabeled)
+            consistency_loss_unlabeled = consistency_fn(pred_stu_unlabeled, pred_tch_unlabeled)
+            consistency_loss_labeled = consistency_fn(pred_stu_labeled,
+                                                      pred_tch_labeled) if CONS_LS_ON_LABELED_SAMPLES else 0
+            consistency_loss = consistency_loss_labeled + consistency_loss_unlabeled
+
+        # calculate losses depending on labeled or unlabeled samples
+        consistency_weight = get_current_consistency_weight(epoch - MT_DELAY)
+        class_loss = loss_fn(pred_stu_labeled, target)
+
+        loss = consistency_weight * consistency_loss + class_loss
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        update_teacher_params(student_model, teacher_model, EMA_DECAY, step)
+
+        jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred_stu_labeled, 1), 1), ground_truth=target,
+                                  n_classes=len(loader.dataset.classes))
+
+        losses.append(float(loss.item()))
+        class_losses.append(float(class_loss.item()))
+        if not skip_teacher:
+            consistency_losses.append(float(consistency_loss.item()))
+        ious.append(jaccard_idx)
+
+        loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
+        step += 1
+
+    if writer is not None:
+        writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=epoch)
+        writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious), global_step=epoch)
+        if not skip_teacher:
+            writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(ious),
+                              global_step=epoch)
+        writer.add_scalar('Training/Class Loss', np.array(class_losses).sum() / len(ious), global_step=epoch)
+        writer.add_scalar('Training/Learning Rate', optimizer.param_groups[0]['lr'], global_step=epoch)
+        writer.add_scalar('Training/Consistency Weight', consistency_weight, global_step=epoch)
+
+    return losses, ious, steps
+
+
 def val_fn(loader, model, loss_fn, epoch=0, writer=None, writer_suffix=''):
     model.eval()
     losses = []
@@ -259,8 +376,10 @@ def get_cs_loaders(data_dir, lbl_range, unlbl_range):
 
     print(len(train_data))
 
-    train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
-    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+    train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
+                                worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
     return train_dataloader, val_dataloader
 
@@ -272,8 +391,10 @@ def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
 
     sampler = TwoStreamBatchSampler(train_data.unlabeled_idxs, train_data.labeled_idxs, batch_size=BATCH_SIZE,
                                     secondary_batch_size=BATCH_SIZE // 4)
-    train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=sampler, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
-    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+    train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=sampler,
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
+                                worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
     return train_dataloader, val_dataloader
 
@@ -282,8 +403,11 @@ def get_vap_loaders(data_dir, lbl_range, unlbl_range):
     train_data = VapourData(data_dir, transforms=transforms_train, use_labeled=lbl_range, use_unlabeled=unlbl_range)
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
-    train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY, num_workers=NUM_WORKERS, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
-    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+    train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
+                                  num_workers=NUM_WORKERS, worker_init_fn=seed_worker if DEV else None,
+                                  generator=GENERATOR)
+    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
+                                worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
     return train_dataloader, val_dataloader
 
@@ -295,8 +419,10 @@ def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
     train_dataloader = DataLoader(train_data, shuffle=True, pin_memory=PIN_MEMORY,
                                   batch_sampler=TwoStreamBatchSampler(train_data.labeled_idxs,
                                                                       train_data.unlabeled_idxs, batch_size=BATCH_SIZE,
-                                                                      secondary_batch_size=BATCH_SIZE // 4), worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
-    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+                                                                      secondary_batch_size=BATCH_SIZE // 4),
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+    val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
+                                worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
     return train_dataloader, val_dataloader
 
@@ -386,7 +512,8 @@ def main():
 
     run_name = (
         f"{args.runname or 'test'}_lrsp_{LR_PATIENCE}_lrsf_{LRS_FACTOR}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}_p_{ES_PATIENCE}_"
-        + (f"cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_emad_{EMA_DECAY}_" if MT_ENABLED else '')
+        + (
+            f"cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_emad_{EMA_DECAY}_" if MT_ENABLED else '')
         + f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}"
         if not CONTINUE else
         f"{args.runname or 'test'}")
@@ -422,6 +549,16 @@ def main():
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
 
+    if USE_COWMASK:
+        cow_mask_dataset = CowMaskGenerator(crop_size=(IMAGE_HEIGHT, IMAGE_WIDTH), method="mix")
+        cow_mask_loader = DataLoader(dataset=cow_mask_dataset,
+                                     batch_size=int(BATCH_SIZE_UNLABELED / 2),
+                                     num_workers=NUM_WORKERS,
+                                     worker_init_fn=seed_worker)
+        cow_mask_iter = iter(cow_mask_loader)
+    else:
+        cow_mask_iter = None
+
     step = 0
     epoch_global = 0
     if CONTINUE:
@@ -443,9 +580,9 @@ def main():
         epoch_global += 1
         print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
         _, _, step = (
-            train_loop_mt(loader=train_loader, student_model=model, teacher_model=teacher, optimizer=optimizer,
+            train_loop_mt_split_batches(loader=train_loader, student_model=model, teacher_model=teacher, optimizer=optimizer,
                           loss_fn=loss_fn, consistency_fn=consistency_loss_fn, writer=writer,
-                          step=step, epoch=epoch_global)
+                          step=step, epoch=epoch_global, mask_loader=cow_mask_iter)
             if MT_ENABLED else
             train_loop(loader=train_loader,
                        model=model,

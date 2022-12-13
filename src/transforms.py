@@ -67,6 +67,34 @@ def transforms_train_mt(image, mask):
 	return images, mask
 
 
+def transforms_train_mt_basic(image, mask):
+	"""
+		Performs only basic transforms
+		:param image:
+		:param mask:
+		:return:
+	"""
+	image = np.array(image)
+	if mask is not None:
+		mask = np.array(mask)
+
+	transform_same = A.Compose([
+		A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+		A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
+		A.RandomCrop(224, 224),
+		A.HorizontalFlip(p=0.5),
+		ToTensorV2()
+	])
+
+	if mask is not None:
+		augmented_same = transform_same(image=image, mask=mask)
+		image, mask = augmented_same['image'], augmented_same['mask'].long()
+	else:
+		image = transform_same(image=image)['image']
+
+	return image, mask
+
+
 def transforms_train(image, mask):
 	"""
 
