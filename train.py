@@ -37,7 +37,7 @@ PIN_MEMORY = True
 CONTINUE = False
 LOAD_PATH = None
 CONSISTENCY = 0.003
-CONSISTENCY_RAMPUP_LENGTH = 50
+CONSISTENCY_RAMPUP_LENGTH = 15
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
 MT_ENABLED = True
@@ -271,7 +271,7 @@ def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
     sampler = TwoStreamBatchSampler(train_data.unlabeled_idxs, train_data.labeled_idxs, batch_size=BATCH_SIZE,
-                                    secondary_batch_size=3 * BATCH_SIZE // 4)
+                                    secondary_batch_size=BATCH_SIZE // 4)
     train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=sampler, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
