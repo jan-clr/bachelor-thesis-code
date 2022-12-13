@@ -13,7 +13,7 @@ def cross_entropy_cons_loss(pred_stu: torch.Tensor, pred_tch: torch.Tensor, hard
         loss_fn = nn.CrossEntropyLoss()
         target = None
         if hard_labels:
-            target = nn.functional.argmax(pred_tch, dim=1)
+            target = torch.argmax(pred_tch, dim=1)
         else:
             target = nn.functional.softmax(pred_tch, dim=1)
 
