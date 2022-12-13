@@ -278,7 +278,7 @@ def train_loop_mt_split_batches(loader, student_model, teacher_model, optimizer,
     for batch, (input_labeled, target, input_unlabeled) in loop:
 
         # input is still long for some reason
-        input_unlabeled = input_unlabeled.float().to(DEVICE)
+        input_labeled = input_labeled.float().to(DEVICE)
         if not skip_teacher:
             input_unlabeled = input_unlabeled.float().to(DEVICE)
         target = target.to(DEVICE)
