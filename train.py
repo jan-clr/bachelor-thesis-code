@@ -299,8 +299,8 @@ def train_loop_mt_split_batches(loader, student_model, teacher_model, optimizer,
                         input_unlabeled[i] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * input_unlabeled[i + 1])
                     mixed_labels.append(pred_tch_unlabeled[i] * torch.squeeze(masks[int(i / 2)], dim=1) + (
                             1 - torch.squeeze(masks[int(i / 2)], dim=1)) * pred_tch_unlabeled[i + 1])
-                input_unlabeled = torch.stack(mixed_inputs)
-                pred_tch_unlabeled = torch.squeeze(torch.stack(mixed_labels))
+                input_unlabeled = torch.stack(mixed_inputs).to(DEVICE)
+                pred_tch_unlabeled = torch.squeeze(torch.stack(mixed_labels)).to(DEVICE)
             pred_stu_unlabeled = student_model(input_unlabeled)
             consistency_loss_unlabeled = consistency_fn(pred_stu_unlabeled, pred_tch_unlabeled)
             consistency_loss_labeled = consistency_fn(pred_stu_labeled,
