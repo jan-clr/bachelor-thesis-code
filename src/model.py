@@ -94,7 +94,7 @@ class UnetResEncoder(nn.Module):
 		else:
 			self.dropout = None
 
-		self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch)
+		self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch, drop_rate=dropout_p or 0.0)
 		feature_steps = self.encoder.feature_info.channels()
 		self.up = nn.ModuleList()
 
