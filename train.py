@@ -43,7 +43,7 @@ CONSISTENCY_RAMPUP_LENGTH = 15
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
 MT_ENABLED = True
-EMA_DECAY = 0.99
+EMA_DECAY = 0.996
 MT_DELAY = 10
 DROPOUT = None
 DROPOUT_TEACHER = None
@@ -69,7 +69,8 @@ def collate_split_batches(batch):
             input_labeled.append(input)
             labels.append(target)
 
-    return torch.stack(input_labeled), torch.stack(labels), torch.stack(input_unlabeled) if input_labeled else None
+    print(len(input_labeled), len(input_unlabeled), len(labels))
+    return torch.stack(input_labeled), torch.stack(labels), torch.stack(input_unlabeled) if input_unlabeled else None
 
 
 def seed_worker(worker_id):
@@ -145,11 +146,12 @@ def show_img_and_pred(img, target=None, prediction=None):
 
 def apply_masks(masks, inputs, targets):
     mixed_inputs, mixed_labels = [], []
-    for i in range(len(inputs), 2):
+    for i in range(0, len(inputs), 2):
         mixed_inputs.append(
             inputs[i] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * inputs[i + 1])
         mixed_labels.append(targets[i] * torch.squeeze(masks[int(i / 2)], dim=1) + (
                 1 - torch.squeeze(masks[int(i / 2)], dim=1)) * targets[i + 1])
+    print(len(mixed_inputs), len(inputs))
     return torch.stack(mixed_inputs).to(DEVICE), torch.squeeze(torch.stack(mixed_labels)).to(DEVICE)
 
 
@@ -165,14 +167,14 @@ class Trainer(object):
         self.run_name = run_name
         self.run_dir = run_dir
         self.run_file = f"{run_dir}/model.pth.tar"
-        self.teacher = teacher,
+        self.teacher = teacher
         self.consistency_fn = consistency_fn
         self.step = step
         self.epoch_global = epoch_global
         self.mask_loader = mask_loader
         self.best_loss = None
         self.best_iou = None
-        self.patience_counter = None
+        self.patience_counter = 0
 
         # logging
         self.writer = SummaryWriter(log_dir=run_dir)
@@ -254,8 +256,9 @@ class Trainer(object):
                 # Calc teacher predictions
                 pred_tch_unlabeled = self.teacher(input_unlabeled)
                 pred_tch_labeled = self.teacher(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
+                print(input_unlabeled.size())
                 if self.mask_loader is not None:
-                    masks = next(self.mask_loader)
+                    masks = next(self.mask_loader).to(DEVICE)
                     input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled)
                 # Unlabeled student predictions
                 pred_stu_unlabeled = self.model(input_unlabeled)
@@ -676,7 +679,7 @@ def main():
                                 if MT_ENABLED else
                                 get_cs_loaders(data_dir=data_dir,
                                                lbl_range=label_rng if label_rng is not None else slice(None, None),
-                                               unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0)))
+                                               unlbl_range=slice(0, 0)))
 
     out_ch = len(train_loader.dataset.classes)
 
@@ -713,72 +716,10 @@ def main():
     elif LOAD_PATH is not None:
         load_checkpoint(LOAD_PATH, model, except_layers=['final.weight', 'final.bias'], strict=False)
 
+    trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler, teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=cow_mask_iter, step=step, epoch_global=epoch_global)
+
     print("\nBeginning Training\n")
-    # logging
-    writer = SummaryWriter(log_dir=run_dir)
-    # images = next(iter(train_loader))[0].to(DEVICE)
-    # writer.add_graph(model, images)
-    best_loss = None
-    best_iou = None
-    patience_counter = 0
-
-    for epoch in range(NUM_EPOCHS):
-        epoch_global += 1
-        print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
-        _, _, step = (
-            train_loop_mt_split_batches(loader=train_loader, student_model=model, teacher_model=teacher,
-                                        optimizer=optimizer,
-                                        loss_fn=loss_fn, consistency_fn=consistency_loss_fn, writer=writer,
-                                        step=step, epoch=epoch_global, mask_loader=cow_mask_iter)
-            if MT_ENABLED else
-            train_loop(loader=train_loader,
-                       model=model,
-                       optimizer=optimizer,
-                       loss_fn=loss_fn,
-                       writer=writer,
-                       step=step,
-                       epoch=epoch_global))
-
-        save_checkpoint(model, teacher_model=teacher, optimizer=optimizer, scheduler=scheduler,
-                        epoch_global=epoch_global, filename=run_file)
-
-        losses, ious = [], []
-        if MT_ENABLED:
-            losses, ious = val_fn(val_loader, teacher, loss_fn, epoch_global, writer, writer_suffix='Teacher')
-            val_fn(val_loader, model, loss_fn, epoch_global, writer, writer_suffix='Student')
-        else:
-            losses, ious = val_fn(val_loader, model, loss_fn, epoch_global, writer)
-
-        val_loss = np.array(losses).sum() / len(losses)
-        if LRS_ENABLED:
-            scheduler.step(val_loss)
-        # early stopping
-        if best_loss is None:
-            best_loss = val_loss
-            best_iou = np.array(ious).sum() / len(ious)
-        elif best_loss - val_loss > MIN_DELTA:
-            patience_counter = 0
-            best_loss = val_loss
-            best_iou = np.array(ious).sum() / len(ious)
-            save_checkpoint(model, teacher_model=teacher, optimizer=optimizer, scheduler=scheduler,
-                            epoch_global=epoch_global, filename=f"{run_dir}/model_best.pth.tar")
-        else:
-            patience_counter += 1
-            print(
-                f"No validation loss improvement since {patience_counter} epochs.\nStopping after another {ES_PATIENCE - patience_counter} epochs without improvement.")
-
-        if patience_counter >= ES_PATIENCE:
-            print("Stopping early because of stagnant validation loss.")
-            break
-
-        print(f"-------------------------------\n")
-
-    print("\nTraining Complete.")
-    writer.add_hparams({'lr': LEARNING_RATE, 'bsize': BATCH_SIZE, "lrs_factor": LRS_FACTOR, "lr_patience": LR_PATIENCE},
-                       {'hparams/loss': best_loss, 'hparams/iou': best_iou}, run_name='.')
-
-    alert_training_end(run_name, epoch_global, stopped_early=(patience_counter >= ES_PATIENCE),
-                       final_metrics={'best_loss': best_loss, 'best_iou': best_iou})
+    trainer.train()
 
 
 if __name__ == '__main__':
