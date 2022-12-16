@@ -69,7 +69,6 @@ def collate_split_batches(batch):
             input_labeled.append(input)
             labels.append(target)
 
-    print(len(input_labeled), len(input_unlabeled), len(labels))
     return torch.stack(input_labeled), torch.stack(labels), torch.stack(input_unlabeled) if input_unlabeled else None
 
 
