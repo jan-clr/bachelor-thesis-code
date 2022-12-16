@@ -69,7 +69,7 @@ def collate_split_batches(batch):
             input_labeled.append(input)
             labels.append(target)
 
-    return torch.stack(input_labeled), torch.stack(labels), torch.stack(input_unlabeled)
+    return torch.stack(input_labeled), torch.stack(labels), torch.stack(input_unlabeled) if input_labeled else None
 
 
 def seed_worker(worker_id):
@@ -143,19 +143,164 @@ def show_img_and_pred(img, target=None, prediction=None):
     plt.show()
 
 
+def apply_masks(masks, inputs, targets):
+    mixed_inputs, mixed_labels = [], []
+    for i in range(len(inputs), 2):
+        mixed_inputs.append(
+            inputs[i] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * inputs[i + 1])
+        mixed_labels.append(targets[i] * torch.squeeze(masks[int(i / 2)], dim=1) + (
+                1 - torch.squeeze(masks[int(i / 2)], dim=1)) * targets[i + 1])
+    return torch.stack(mixed_inputs).to(DEVICE), torch.squeeze(torch.stack(mixed_labels)).to(DEVICE)
+
+
 class Trainer(object):
-    def __init__(self, model, optimizer, train_loader, val_loader, loss_fn, run_name, teacher=None, consistency_fn=None,
-                 step=0, epoch_global=0):
+    def __init__(self, model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=None,
+                 teacher=None, consistency_fn=None, mask_loader=None, step=0, epoch_global=0):
         self.model = model
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.loss_fn = loss_fn
         self.run_name = run_name
+        self.run_dir = run_dir
+        self.run_file = f"{run_dir}/model.pth.tar"
         self.teacher = teacher,
         self.consistency_fn = consistency_fn
         self.step = step
         self.epoch_global = epoch_global
+        self.mask_loader = mask_loader
+        self.best_loss = None
+        self.best_iou = None
+        self.patience_counter = None
+
+        # logging
+        self.writer = SummaryWriter(log_dir=run_dir)
+
+    def train(self):
+        for epoch in range(NUM_EPOCHS):
+            self.epoch_global += 1
+            print(f"Epoch {epoch + 1} ({self.epoch_global})\n-------------------------------")
+            self.train_epoch()
+            save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer, scheduler=self.scheduler,
+                            epoch_global=self.epoch_global, filename=self.run_file)
+
+            if self.teacher is not None:
+                losses, ious = val_fn(self.val_loader, self.teacher, self.loss_fn, self.epoch_global, self.writer,
+                                      writer_suffix='Teacher')
+                val_fn(self.val_loader, self.model, self.loss_fn, self.epoch_global, self.writer,
+                       writer_suffix='Student')
+            else:
+                losses, ious = val_fn(self.val_loader, self.model, self.loss_fn, self.epoch_global, self.writer)
+
+            val_loss = np.array(losses).sum() / len(losses)
+            if self.scheduler is not None:
+                self.scheduler.step(val_loss)
+            # early stopping
+            if self.best_loss is None:
+                self.best_loss = val_loss
+                self.best_iou = np.array(ious).sum() / len(ious)
+            elif self.best_loss - val_loss > MIN_DELTA:
+                self.patience_counter = 0
+                self.best_loss = val_loss
+                self.best_iou = np.array(ious).sum() / len(ious)
+                save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer,
+                                scheduler=self.scheduler,
+                                epoch_global=self.epoch_global, filename=f"{self.run_dir}/model_best.pth.tar")
+            else:
+                self.patience_counter += 1
+                print(
+                    f"No validation loss improvement since {self.patience_counter} epochs.\nStopping after another {ES_PATIENCE - self.patience_counter} epochs without improvement.")
+
+            if self.patience_counter >= ES_PATIENCE:
+                print("Stopping early because of stagnant validation loss.")
+                break
+
+            print(f"-------------------------------\n")
+
+        print("\nTraining Complete.")
+        self.writer.add_hparams(
+            {'lr': LEARNING_RATE, 'bsize': BATCH_SIZE, "lrs_factor": LRS_FACTOR, "lr_patience": LR_PATIENCE},
+            {'hparams/loss': self.best_loss, 'hparams/iou': self.best_iou}, run_name='.')
+
+        alert_training_end(self.run_name, self.epoch_global, stopped_early=(self.patience_counter >= ES_PATIENCE),
+                           final_metrics={'best_loss': self.best_loss, 'best_iou': self.best_iou})
+
+    def train_epoch(self):
+        losses = []
+        class_losses = []
+        consistency_losses = []
+        ious = []
+        loop = tqdm(enumerate(self.train_loader), total=len(self.train_loader), leave=False)
+        skip_teacher = self.epoch_global <= MT_DELAY
+
+        for batch, (input_labeled, target, input_unlabeled) in loop:
+
+            # input is still long for some reason
+            input_labeled = input_labeled.float().to(DEVICE)
+            if input_unlabeled is not None and not skip_teacher:
+                input_unlabeled = input_unlabeled.float().to(DEVICE)
+            target = target.to(DEVICE)
+
+            consistency_loss = 0
+
+            # Supervised Learning
+            pred_stu_labeled = self.model(input_labeled)
+            class_loss = self.loss_fn(pred_stu_labeled, target)
+            loss = class_loss
+
+            # Unsupervised learning
+            if self.teacher is not None and not skip_teacher:
+                # Calc teacher predictions
+                pred_tch_unlabeled = self.teacher(input_unlabeled)
+                pred_tch_labeled = self.teacher(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
+                if self.mask_loader is not None:
+                    masks = next(self.mask_loader)
+                    input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled)
+                # Unlabeled student predictions
+                pred_stu_unlabeled = self.model(input_unlabeled)
+                # Calc consistency loss
+                consistency_loss_unlabeled = self.consistency_fn(pred_stu_unlabeled, pred_tch_unlabeled)
+                consistency_loss_labeled = self.consistency_fn(pred_stu_labeled,
+                                                          pred_tch_labeled) if CONS_LS_ON_LABELED_SAMPLES else 0
+
+                # calculate losses depending on labeled or unlabeled samples
+                consistency_weight = get_current_consistency_weight(self.epoch_global - MT_DELAY)
+                consistency_loss = consistency_loss_labeled + consistency_loss_unlabeled
+                loss = consistency_weight * consistency_loss + class_loss
+
+            # Backpropagation
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            if self.teacher is not None:
+                update_teacher_params(self.model, self.teacher, EMA_DECAY, self.step)
+
+            jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred_stu_labeled, 1), 1),
+                                      ground_truth=target,
+                                      n_classes=len(self.train_loader.dataset.classes))
+
+            losses.append(float(loss.item()))
+            class_losses.append(float(class_loss.item()))
+            if self.teacher is not None and not skip_teacher:
+                consistency_losses.append(float(consistency_loss.item()))
+            ious.append(jaccard_idx)
+
+            loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
+            self.step += 1
+
+        if self.writer is not None:
+            self.writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=self.epoch_global)
+            self.writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious),
+                                   global_step=self.epoch_global)
+            if self.teacher is not None and not skip_teacher:
+                self.writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(ious),
+                                       global_step=self.epoch_global)
+                self.writer.add_scalar('Training/Consistency Weight', consistency_weight, global_step=self.epoch_global)
+            self.writer.add_scalar('Training/Class Loss', np.array(class_losses).sum() / len(ious),
+                                   global_step=self.epoch_global)
+            self.writer.add_scalar('Training/Learning Rate', self.optimizer.param_groups[0]['lr'],
+                                   global_step=self.epoch_global)
 
 
 def train_loop(loader, model, optimizer, loss_fn, writer=None, step=0, epoch=0):
@@ -374,10 +519,8 @@ def get_cs_loaders(data_dir, lbl_range, unlbl_range):
                                          use_unlabeled=unlbl_range)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
-    print(len(train_data))
-
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
-                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR, collate_fn=collate_split_batches)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
                                 worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
@@ -385,14 +528,16 @@ def get_cs_loaders(data_dir, lbl_range, unlbl_range):
 
 
 def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
-    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt_basic, low_res=True, use_labeled=lbl_range,
+    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_mt_basic, low_res=True,
+                                         use_labeled=lbl_range,
                                          use_unlabeled=unlbl_range)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
     sampler = TwoStreamBatchSampler(train_data.unlabeled_idxs, train_data.labeled_idxs, batch_size=BATCH_SIZE,
                                     secondary_batch_size=BATCH_SIZE - BATCH_SIZE_UNLABELED)
     train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY, batch_sampler=sampler,
-                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR, collate_fn=collate_split_batches)
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR,
+                                  collate_fn=collate_split_batches)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
                                 worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
@@ -417,10 +562,11 @@ def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
     train_dataloader = DataLoader(train_data, shuffle=True, pin_memory=PIN_MEMORY,
-                                  batch_sampler=TwoStreamBatchSampler(train_data.labeled_idxs,
-                                                                      train_data.unlabeled_idxs, batch_size=BATCH_SIZE,
+                                  batch_sampler=TwoStreamBatchSampler(train_data.unlabeled_idxs,
+                                                                      train_data.labeled_idxs, batch_size=BATCH_SIZE,
                                                                       secondary_batch_size=BATCH_SIZE - BATCH_SIZE_UNLABELED),
-                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR, collate_fn=collate_split_batches)
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR,
+                                  collate_fn=collate_split_batches)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
                                 worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
@@ -580,9 +726,10 @@ def main():
         epoch_global += 1
         print(f"Epoch {epoch + 1} ({epoch_global})\n-------------------------------")
         _, _, step = (
-            train_loop_mt_split_batches(loader=train_loader, student_model=model, teacher_model=teacher, optimizer=optimizer,
-                          loss_fn=loss_fn, consistency_fn=consistency_loss_fn, writer=writer,
-                          step=step, epoch=epoch_global, mask_loader=cow_mask_iter)
+            train_loop_mt_split_batches(loader=train_loader, student_model=model, teacher_model=teacher,
+                                        optimizer=optimizer,
+                                        loss_fn=loss_fn, consistency_fn=consistency_loss_fn, writer=writer,
+                                        step=step, epoch=epoch_global, mask_loader=cow_mask_iter)
             if MT_ENABLED else
             train_loop(loader=train_loader,
                        model=model,
