@@ -288,7 +288,7 @@ class Trainer(object):
 
             losses.append(float(loss.item()))
             class_losses.append(float(class_loss.item()))
-            if self.teacher is not None and not skip_teacher:
+            if MT_ENABLED and self.teacher is not None and not skip_teacher:
                 consistency_losses.append(float(consistency_loss.item()))
             ious.append(jaccard_idx)
 
@@ -299,7 +299,7 @@ class Trainer(object):
             self.writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=self.epoch_global)
             self.writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious),
                                    global_step=self.epoch_global)
-            if self.teacher is not None and not skip_teacher:
+            if MT_ENABLED and self.teacher is not None and not skip_teacher:
                 self.writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(ious),
                                        global_step=self.epoch_global)
                 self.writer.add_scalar('Training/Consistency Weight', consistency_weight, global_step=self.epoch_global)
