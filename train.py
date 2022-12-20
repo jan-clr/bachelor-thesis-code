@@ -545,6 +545,8 @@ def main():
         trainer.train()
     else:
         # Supervised learning cycle
+        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
+        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
         print("\nStarting supervised training step.\n")
         trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_supervised_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "supervised1"), step=step, epoch_global=epoch_global)
         trainer.train()
@@ -566,7 +568,7 @@ def main():
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                          cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
         train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_pseudo_labels=unlabel_rng, pseudo_label_dir=output_path)
-        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True)
+        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
         trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_pseudo_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "pseudo1"))
         print("\nTrain on pseudo labels.\n")
         trainer.train()
@@ -577,7 +579,7 @@ def main():
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                          cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
         train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
-        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True)
+        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
         trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_tune_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "tune1"))
         print("\nFine tune on labeled data.\n")
         trainer.train()
