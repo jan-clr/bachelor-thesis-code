@@ -96,6 +96,7 @@ def transforms_train_mt_basic(image, mask):
 
 
 def transforms_generator(image, mask):
+	image, mask = np.array(image), np.array(mask)
 	tt = ToTensorV2()
 	transformed = tt(image=image, mask=mask)
 	return transformed['image'], transformed['mask']

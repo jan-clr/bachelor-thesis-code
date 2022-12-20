@@ -197,17 +197,22 @@ def split_images(from_path, to_path, file_ext='png'):
 
 
 def generate_pseudo_labels(model, loader, output_dir, device):
+    path = Path(output_dir)
+    path.mkdir(parents=True)
     model.eval()
     loop = tqdm(enumerate(loader), total=len(loader), leave=False)
     for i, (image, target) in loop:
-        image = image.to(device)
+        image = image.float().to(device)
         pred = model(image)
+        pred = torch.squeeze(pred)
         label = torch.argmax(pred, dim=len(pred.size()) - 3) # size as 4 entries if images are batched
         if len(label.size()) == 3:
+            # / 255.0 because torch io expects float tensors [0.0, 1.0]
+            # replace with functionality that natively supports int
             for j in range(len(label)):
-                save_image(label[i], os.path.join(output_dir, f"{i + j}.png"))
+                save_image(label[i] / 255.0, os.path.join(output_dir, f"{i + j}.png"))
         else:
-            save_image(label, os.path.join(output_dir, f"{i}.png"))
+            save_image(label / 255.0, os.path.join(output_dir, f"{i}.png"))
 
 
 def send_slack_msg(content, text="Fallback Alert"):
