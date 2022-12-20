@@ -95,6 +95,12 @@ def transforms_train_mt_basic(image, mask):
 	return image, mask
 
 
+def transforms_generator(image, mask):
+	tt = ToTensorV2()
+	transformed = tt(image=image, mask=mask)
+	return transformed['image'], transformed['mask']
+
+
 def transforms_train(image, mask):
 	"""
 
