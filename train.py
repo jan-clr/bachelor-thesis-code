@@ -34,7 +34,7 @@ NUM_WORKERS = 4
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 30
+ES_PATIENCE = 50
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 LRS_ENABLED = True
@@ -426,6 +426,8 @@ def main():
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--mt", help="Set if mean teacher should be used",
                         action=argparse.BooleanOptionalAction)
+    parser.add_argument("--ctn", help="Continue previous run",
+                        action=argparse.BooleanOptionalAction)
     parser.add_argument("--dropout", help="Set model dropout rate")
     parser.add_argument("--dropout_tch", help="Set teacher dropout rate when using MT")
     parser.add_argument("--mtdelay",
@@ -445,6 +447,7 @@ def main():
     global DROPOUT_TEACHER
     global MT_ENABLED
     global MT_DELAY
+    global CONTINUE
     global USE_ITERATIVE
     label_rng = None
     unlabel_rng = None
@@ -467,6 +470,8 @@ def main():
         LRS_ENABLED = args.lrs
     if args.mt is not None:
         MT_ENABLED = args.mt
+    if args.ctn is not None:
+        CONTINUE = args.ctn
     if args.dropout is not None:
         DROPOUT = float(args.dropout)
     if args.dropout_tch is not None:
