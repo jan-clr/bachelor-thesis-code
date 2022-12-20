@@ -111,6 +111,16 @@ class CustomCityscapesDataset(VisionDataset):
         # make unlabeled slices take priority and ensure no overlap
         self.labeled_idxs = [idx for idx in self.labeled_idxs if idx not in self.unlabeled_idxs]
 
+        # reorder images and targets so dataset indexing can always begin at 0
+        images = [self.images[i] for i in self.labeled_idxs]
+        images += [self.images[i] for i in self.unlabeled_idxs]
+        self.images = images
+        self.targets = [self.targets[i] for i in self.labeled_idxs]
+
+        # Update idxs
+        self.labeled_idxs = [i for i in range(len(self.labeled_idxs))]
+        self.unlabeled_idxs = [i for i in range(len(self.labeled_idxs), len(self.labeled_idxs) + len(self.unlabeled_idxs))]
+
     def __len__(self) -> int:
         return len(self.labeled_idxs) + len(self.unlabeled_idxs)
 
@@ -249,6 +259,15 @@ class VapourData(VisionDataset):
         # make unlabeled slices take priority and ensure no overlap
         self.labeled_idxs = [idx for idx in self.labeled_idxs if idx not in self.unlabeled_idxs]
 
+        # reorder images and targets so dataset indexing can always begin at 0
+        images = [self.images[i] for i in self.labeled_idxs]
+        images += [self.images[i] for i in self.unlabeled_idxs]
+        self.images = images
+        self.targets = [self.targets[i] for i in self.labeled_idxs]
+
+        # Update idxs
+        self.labeled_idxs = [i for i in range(len(self.labeled_idxs))]
+        self.unlabeled_idxs = [i for i in range(len(self.labeled_idxs), len(self.unlabeled_idxs))]
         print(f"Using {len(self.images)} samples.")
 
     def __len__(self) -> int:
