@@ -29,7 +29,9 @@ class CustomCityscapesDataset(VisionDataset):
                  transforms: Optional[Callable] = None,
                  low_res: bool = True,
                  use_labeled: slice = None,
-                 use_unlabeled: slice = None) -> None:
+                 use_unlabeled: slice = None,
+                 use_pseudo_labels: slice = None,
+                 pseudo_label_dir: str = None) -> None:
 
         super(CustomCityscapesDataset, self).__init__(root_dir, transforms, transform, target_transform)
 
@@ -88,6 +90,14 @@ class CustomCityscapesDataset(VisionDataset):
                 self.images.append(os.path.join(img_dir, file_name))
                 self.targets.append(os.path.join(target_dir, target_name))
 
+        # change targets for images in pseudo label range
+        if use_pseudo_labels is not None and pseudo_label_dir is not None:
+            pseudo_label_files = os.listdir(pseudo_label_dir)
+            pseudo_targets = self.targets[use_pseudo_labels]
+            for i in range(len(pseudo_targets)):
+                pseudo_targets[i] = os.path.join(pseudo_label_dir, pseudo_label_files[i])
+            self.targets[use_pseudo_labels] = pseudo_targets
+
         # default use all images with targets
         self.labeled_idxs = [idx for idx in range(len(self.images))]
         self.unlabeled_idxs = []
@@ -141,9 +151,10 @@ class VapourData(VisionDataset):
                  transform: Optional[Callable] = None,
                  target_transform: Optional[Callable] = None,
                  transforms: Optional[Callable] = None, low_res: bool = False, split: bool = True,
-                 nr_to_use=None,
                  use_labeled: slice = None,
-                 use_unlabeled: slice = None) -> None:
+                 use_unlabeled: slice = None,
+                 use_pseudo_labels: slice = None,
+                 pseudo_label_dir: str = None) -> None:
 
         super(VapourData, self).__init__(root_dir, transforms, transform, target_transform)
 
@@ -217,9 +228,13 @@ class VapourData(VisionDataset):
             self.images.append(os.path.join(self.image_dir, file_name))
             self.targets.append(os.path.join(self.target_dir, target_name))
 
-        if nr_to_use is not None:
-            self.images = self.images[:nr_to_use]
-            self.targets = self.targets[:nr_to_use]
+        # change targets for images in pseudo label range
+        if use_pseudo_labels is not None and pseudo_label_dir is not None:
+            pseudo_label_files = os.listdir(pseudo_label_dir)
+            pseudo_targets = self.targets[use_pseudo_labels]
+            for i in range(len(pseudo_targets)):
+                pseudo_targets[i] = os.path.join(pseudo_label_dir, pseudo_label_files[i])
+            self.targets[use_pseudo_labels] = pseudo_targets
 
         # default use all images with targets
         self.labeled_idxs = [idx for idx in range(len(self.images))]

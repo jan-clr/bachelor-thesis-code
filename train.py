@@ -1,4 +1,6 @@
 import random
+from os import path
+
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
@@ -13,10 +15,11 @@ import argparse
 from datetime import datetime
 
 from src.masks import CowMaskGenerator
-from src.transforms import transforms_train, transforms_train_mt, transforms_train_mt_basic, transforms_val
+from src.transforms import transforms_train, transforms_train_mt, transforms_train_mt_basic, transforms_val, \
+    transforms_generator
 from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
 from src.model import CS_UNET, UnetResEncoder
-from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end
+from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end, generate_pseudo_labels
 from src.losses import cross_entropy_cons_loss
 from src.lib.mean_teacher.data import TwoStreamBatchSampler
 from src.lib.mean_teacher.losses import softmax_mse_loss
@@ -51,6 +54,7 @@ GENERATOR = None
 CONS_LS_ON_LABELED_SAMPLES = True
 DEV = True
 USE_COWMASK = True
+USE_ITERATIVE = True
 
 
 def collate_split_batches(batch):
@@ -251,7 +255,7 @@ class Trainer(object):
             loss = class_loss
 
             # Unsupervised learning
-            if self.teacher is not None and not skip_teacher:
+            if MT_ENABLED and self.teacher is not None and not skip_teacher:
                 # Calc teacher predictions
                 pred_tch_unlabeled = self.teacher(input_unlabeled)
                 pred_tch_labeled = self.teacher(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
@@ -428,6 +432,8 @@ def main():
     parser.add_argument("--dropout_tch", help="Set teacher dropout rate when using MT")
     parser.add_argument("--mtdelay",
                         help="Set a number of epochs to train only on labeled data before mean teacher sets in")
+    parser.add_argument("--iter", help="Use iterative semi supervised learning approach.",
+                        action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
@@ -442,6 +448,7 @@ def main():
     global MT_ENABLED
     global MT_DELAY
     global CONTINUE
+    global USE_ITERATIVE
     label_rng = None
     unlabel_rng = None
 
@@ -471,6 +478,8 @@ def main():
         DROPOUT_TEACHER = float(args.dropout_tch)
     if args.mtdelay is not None:
         MT_DELAY = int(args.mtdelay)
+    if args.iter is not None:
+        USE_ITERATIVE = args.iter
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -507,7 +516,7 @@ def main():
     model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=DROPOUT).to(
         DEVICE)
     teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d',
-                             dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED else None
+                             dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     consistency_loss_fn = cross_entropy_cons_loss
@@ -535,10 +544,48 @@ def main():
     elif LOAD_PATH is not None:
         load_checkpoint(LOAD_PATH, model, except_layers=['final.weight', 'final.bias'], strict=False)
 
-    trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler, teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=cow_mask_iter, step=step, epoch_global=epoch_global)
+    if not USE_ITERATIVE:
+        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler, teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=cow_mask_iter, step=step, epoch_global=epoch_global)
+        print("\nBeginning Training\n")
+        trainer.train()
+    else:
+        # Supervised learning cycle
+        print("\nStarting supervised training step.\n")
+        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_supervised_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "supervised1"), step=step, epoch_global=epoch_global)
+        trainer.train()
 
-    print("\nBeginning Training\n")
-    trainer.train()
+        # Generate pseudo labels
+        generator_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_generator, use_labeled=slice(0, 0), use_unlabeled=unlabel_rng)
+        generator_loaded = DataLoader(generator_set, batch_size=1, shuffle=False)
+        output_path = path.join(data_dir, f"pseudo_labels_1_{run_name}")
+        print("\nGenerate pseudo labels.\n")
+        generate_pseudo_labels(model=teacher, loader=generator_loaded, output_dir=output_path, device=DEVICE)
+
+        # Train with pseudo labels
+        model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=DROPOUT).to(
+            DEVICE)
+        teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d',
+                                 dropout_p=DROPOUT_TEACHER).to(DEVICE)
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
+                                                         threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
+                                                         cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
+        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_pseudo_labels=unlabel_rng, pseudo_label_dir=output_path)
+        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True)
+        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_pseudo_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "pseudo1"))
+        print("\nTrain on pseudo labels.\n")
+        trainer.train()
+
+        # Fine Tune with labeled data
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
+                                                         threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
+                                                         cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
+        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
+        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True)
+        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_tune_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "tune1"))
+        print("\nFine tune on labeled data.\n")
+        trainer.train()
 
 
 if __name__ == '__main__':

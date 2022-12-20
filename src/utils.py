@@ -9,11 +9,30 @@ import torchvision.transforms.functional as TF
 from slack_sdk import WebhookClient
 from dotenv import load_dotenv
 import socket
-
+import torchvision.transforms.functional as F
+from torchvision.utils import save_image
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 load_dotenv()
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+
+
+def show(imgs):
+    """
+    https://pytorch.org/vision/stable/auto_examples/plot_visualization_utils.html#sphx-glr-auto-examples-plot-visualization-utils-py
+    :param imgs: 
+    :return: 
+    """
+    if not isinstance(imgs, list):
+        imgs = [imgs]
+    fig, axs = plt.subplots(ncols=len(imgs), squeeze=False)
+    for i, img in enumerate(imgs):
+        img = img.detach()
+        img = F.to_pil_image(img)
+        axs[0, i].imshow(np.asarray(img))
+        axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
 
 def save_checkpoint(model, teacher_model=None, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
@@ -175,6 +194,20 @@ def split_images(from_path, to_path, file_ext='png'):
         print(f"\rTransformed {i}/{len(images)}", end='')
 
     print('')
+
+
+def generate_pseudo_labels(model, loader, output_dir, device):
+    model.eval()
+    loop = tqdm(enumerate(loader), total=len(loader), leave=False)
+    for i, (image, target) in loop:
+        image = image.to(device)
+        pred = model(image)
+        label = torch.argmax(pred, dim=len(pred.size()) - 3) # size as 4 entries if images are batched
+        if len(label.size()) == 3:
+            for j in range(len(label)):
+                save_image(label[i], os.path.join(output_dir, f"{i + j}.png"))
+        else:
+            save_image(label, os.path.join(output_dir, f"{i}.png"))
 
 
 def send_slack_msg(content, text="Fallback Alert"):
