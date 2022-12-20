@@ -80,10 +80,12 @@ class CustomCityscapesDataset(VisionDataset):
         target_file_ending = f'gtFine_{id_to_use}.png'
 
         # add files to index
-        for city in os.listdir(self.image_dir):
+        for city in sorted(os.listdir(self.image_dir)):
+            print(city)
             img_dir = os.path.join(self.image_dir, city)
             target_dir = os.path.join(self.target_dir, city)
-            for file_name in os.listdir(img_dir):
+            for file_name in sorted(os.listdir(img_dir)):
+                print(file_name)
                 target_name = "{}_{}".format(
                     file_name.split("_leftImg8bit")[0], target_file_ending
                 )
@@ -92,7 +94,7 @@ class CustomCityscapesDataset(VisionDataset):
 
         # change targets for images in pseudo label range
         if use_pseudo_labels is not None and pseudo_label_dir is not None:
-            pseudo_label_files = os.listdir(pseudo_label_dir)
+            pseudo_label_files = sorted(os.listdir(pseudo_label_dir))
             pseudo_targets = self.targets[use_pseudo_labels]
             for i in range(len(pseudo_targets)):
                 pseudo_targets[i] = os.path.join(pseudo_label_dir, pseudo_label_files[i])
@@ -231,7 +233,7 @@ class VapourData(VisionDataset):
         target_file_ending = f'gtFine_{id_to_use}.png'
 
         # add files to index
-        for file_name in os.listdir(self.image_dir):
+        for file_name in sorted(os.listdir(self.image_dir)):
             target_name = "{}_{}".format(
                 file_name.split("_leftImg8bit")[0], target_file_ending
             )
@@ -240,7 +242,7 @@ class VapourData(VisionDataset):
 
         # change targets for images in pseudo label range
         if use_pseudo_labels is not None and pseudo_label_dir is not None:
-            pseudo_label_files = os.listdir(pseudo_label_dir)
+            pseudo_label_files = sorted(os.listdir(pseudo_label_dir))
             pseudo_targets = self.targets[use_pseudo_labels]
             for i in range(len(pseudo_targets)):
                 pseudo_targets[i] = os.path.join(pseudo_label_dir, pseudo_label_files[i])
