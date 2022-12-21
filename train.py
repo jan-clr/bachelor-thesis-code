@@ -1,3 +1,4 @@
+import os
 import random
 from os import path
 
@@ -29,7 +30,7 @@ LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
 BATCH_SIZE_UNLABELED = 12
-NUM_EPOCHS = 600
+NUM_EPOCHS = 1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
@@ -205,6 +206,9 @@ class Trainer(object):
             if self.best_loss is None:
                 self.best_loss = val_loss
                 self.best_iou = np.array(ious).sum() / len(ious)
+                save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer,
+                                scheduler=self.scheduler,
+                                epoch_global=self.epoch_global, filename=f"{self.run_dir}/model_best.pth.tar")
             elif self.best_loss - val_loss > MIN_DELTA:
                 self.patience_counter = 0
                 self.best_loss = val_loss
@@ -542,7 +546,7 @@ def main():
 
     step = 0
     epoch_global = 0
-    if CONTINUE:
+    if CONTINUE and not USE_ITERATIVE:
         step, epoch_global = load_checkpoint(run_file, model, teacher_model=teacher, optimizer=optimizer,
                                              scheduler=scheduler)
     elif LOAD_PATH is not None:
@@ -560,6 +564,8 @@ def main():
             print("\nStarting supervised training step.\n")
             trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_supervised_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "supervised1"), step=step, epoch_global=epoch_global)
             trainer.train()
+        # load checkpoint so best model is used for pseudo label generation
+        load_checkpoint(os.path.join(f"{run_dir}", 'supervised1', 'model_best.pth.tar'), model=model, teacher_model=teacher)
 
         # Generate pseudo labels
         generator_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_generator, use_labeled=slice(0, 0), use_unlabeled=unlabel_rng)
@@ -584,6 +590,7 @@ def main():
         trainer.train()
 
         # Fine Tune with labeled data
+        load_checkpoint(os.path.join(f"{run_dir}", 'pseudo1', 'model_best.pth.tar'), model=model, teacher_model=teacher)
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
