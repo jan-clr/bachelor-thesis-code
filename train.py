@@ -45,16 +45,17 @@ CONSISTENCY = 1.0
 CONSISTENCY_RAMPUP_LENGTH = 15
 ROOT_DATA_DIR = './data'
 DATASET_NAME = 'Cityscapes'
-MT_ENABLED = True
+MT_ENABLED = False
 EMA_DECAY = 0.996
-MT_DELAY = 10
+MT_DELAY = 0
 DROPOUT = None
 DROPOUT_TEACHER = None
 GENERATOR = None
 CONS_LS_ON_LABELED_SAMPLES = True
 DEV = True
 USE_COWMASK = True
-USE_ITERATIVE = True
+USE_ITERATIVE = False
+SKIP_SUPERVISED = False
 
 
 def collate_split_batches(batch):
@@ -154,7 +155,6 @@ def apply_masks(masks, inputs, targets):
             inputs[i] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * inputs[i + 1])
         mixed_labels.append(targets[i] * torch.squeeze(masks[int(i / 2)], dim=1) + (
                 1 - torch.squeeze(masks[int(i / 2)], dim=1)) * targets[i + 1])
-    print(len(mixed_inputs), len(inputs))
     return torch.stack(mixed_inputs).to(DEVICE), torch.squeeze(torch.stack(mixed_labels)).to(DEVICE)
 
 
@@ -259,7 +259,6 @@ class Trainer(object):
                 # Calc teacher predictions
                 pred_tch_unlabeled = self.teacher(input_unlabeled)
                 pred_tch_labeled = self.teacher(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
-                print(input_unlabeled.size())
                 if self.mask_loader is not None:
                     masks = next(self.mask_loader).to(DEVICE)
                     input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled)
@@ -434,6 +433,8 @@ def main():
                         help="Set a number of epochs to train only on labeled data before mean teacher sets in")
     parser.add_argument("--iter", help="Use iterative semi supervised learning approach.",
                         action=argparse.BooleanOptionalAction)
+    parser.add_argument("--skip", help="Skip supervised training in iterative approach when loading a model.",
+                        action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
@@ -449,6 +450,7 @@ def main():
     global MT_DELAY
     global CONTINUE
     global USE_ITERATIVE
+    global SKIP_SUPERVISED
     label_rng = None
     unlabel_rng = None
 
@@ -480,6 +482,8 @@ def main():
         MT_DELAY = int(args.mtdelay)
     if args.iter is not None:
         USE_ITERATIVE = args.iter
+    if args.skip is not None:
+        SKIP_SUPERVISED = args.skip
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -550,11 +554,12 @@ def main():
         trainer.train()
     else:
         # Supervised learning cycle
-        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
-        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
-        print("\nStarting supervised training step.\n")
-        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_supervised_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "supervised1"), step=step, epoch_global=epoch_global)
-        trainer.train()
+        if not SKIP_SUPERVISED:
+            train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
+            train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
+            print("\nStarting supervised training step.\n")
+            trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_supervised_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "supervised1"), step=step, epoch_global=epoch_global)
+            trainer.train()
 
         # Generate pseudo labels
         generator_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_generator, use_labeled=slice(0, 0), use_unlabeled=unlabel_rng)
