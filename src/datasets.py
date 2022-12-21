@@ -133,7 +133,7 @@ class CustomCityscapesDataset(VisionDataset):
         image = Image.open(self.images[index]).convert('RGB')
         target = None
         if index in self.labeled_idxs:
-            target = Image.open(self.targets[index])
+            target = Image.open(self.targets[index]).convert('L')
         elif index in self.unlabeled_idxs:
             target = np.full((image.size[0], image.size[1]), NO_LABEL, dtype='uint8')
         else:
