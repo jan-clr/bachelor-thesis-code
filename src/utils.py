@@ -200,6 +200,9 @@ def generate_pseudo_labels(model, loader, output_dir, device):
     path = Path(output_dir)
     path.mkdir(parents=True)
     model.eval()
+    nr_samples = len(loader) * loader.batch_size
+    digits = len(str(nr_samples))
+    print(f"Generating pseudo labels for {nr_samples} images")
     loop = tqdm(enumerate(loader), total=len(loader), leave=False)
     for i, (image, target) in loop:
         image = image.float().to(device)
@@ -210,9 +213,9 @@ def generate_pseudo_labels(model, loader, output_dir, device):
             # / 255.0 because torch io expects float tensors [0.0, 1.0]
             # replace with functionality that natively supports int
             for j in range(len(label)):
-                save_image(label[i] / 255.0, os.path.join(output_dir, f"{i + j}.png"))
+                save_image(label[i] / 255.0, os.path.join(output_dir, f"{i + j:0{digits}}.png"))
         else:
-            save_image(label / 255.0, os.path.join(output_dir, f"{i}.png"))
+            save_image(label / 255.0, os.path.join(output_dir, f"{i:0{digits}}.png"))
 
 
 def send_slack_msg(content, text="Fallback Alert"):

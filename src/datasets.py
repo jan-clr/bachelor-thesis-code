@@ -44,7 +44,6 @@ class CustomCityscapesDataset(VisionDataset):
         # Set env var for cityscapeScripts preparation
         os.environ['CITYSCAPES_DATASET'] = root_dir
 
-        print(self.image_dir, self.target_dir)
         # look for full res files or zips if dirs not present
         if not os.path.isdir(self.image_dir) or not os.path.isdir(self.target_dir):
             # when using downsampled images, check if full res images available
@@ -81,11 +80,9 @@ class CustomCityscapesDataset(VisionDataset):
 
         # add files to index
         for city in sorted(os.listdir(self.image_dir)):
-            print(city)
             img_dir = os.path.join(self.image_dir, city)
             target_dir = os.path.join(self.target_dir, city)
             for file_name in sorted(os.listdir(img_dir)):
-                print(file_name)
                 target_name = "{}_{}".format(
                     file_name.split("_leftImg8bit")[0], target_file_ending
                 )
@@ -94,6 +91,7 @@ class CustomCityscapesDataset(VisionDataset):
 
         # change targets for images in pseudo label range
         if use_pseudo_labels is not None and pseudo_label_dir is not None:
+            print(use_pseudo_labels, pseudo_label_dir)
             pseudo_label_files = sorted(os.listdir(pseudo_label_dir))
             pseudo_targets = self.targets[use_pseudo_labels]
             for i in range(len(pseudo_targets)):
