@@ -9,14 +9,33 @@ import torchvision.transforms.functional as TF
 from slack_sdk import WebhookClient
 from dotenv import load_dotenv
 import socket
-
+import torchvision.transforms.functional as F
+from torchvision.utils import save_image
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 load_dotenv()
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 
-def save_checkpoint(model, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
+def show(imgs):
+    """
+    https://pytorch.org/vision/stable/auto_examples/plot_visualization_utils.html#sphx-glr-auto-examples-plot-visualization-utils-py
+    :param imgs: 
+    :return: 
+    """
+    if not isinstance(imgs, list):
+        imgs = [imgs]
+    fig, axs = plt.subplots(ncols=len(imgs), squeeze=False)
+    for i, img in enumerate(imgs):
+        img = img.detach()
+        img = F.to_pil_image(img)
+        axs[0, i].imshow(np.asarray(img))
+        axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+
+
+def save_checkpoint(model, teacher_model=None, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
     checkpoint = {
 	    "state_dict": model.state_dict(),
         "steps": step,
@@ -26,15 +45,18 @@ def save_checkpoint(model, optimizer=None, scheduler=None, step=0, epoch_global=
         checkpoint["optimizer"] = optimizer.state_dict()
     if scheduler is not None:
         checkpoint["scheduler"] = scheduler.state_dict()
+    if teacher_model is not None:
+        checkpoint["teacher_dict"] = teacher_model.state_dict()
 
     print("=> Saving checkpoint")
     torch.save(checkpoint, filename)
 
 
-def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None, strict=True, except_layers=[]) -> (int, int):
+def load_checkpoint(checkpoint_file: str, model, teacher_model=None, optimizer=None, scheduler=None, strict=True, except_layers=[]) -> (int, int):
     """
     Loads the models (and optimizers) parameters from a checkpoint file.
 
+    :param teacher_model: A teacher model to load when using Mean Teacher
     :param strict: Use strict loading
     :param scheduler: The scheduler whose parameters to load if not None
     :param checkpoint_file: The path of the checkpoint file
@@ -51,6 +73,8 @@ def load_checkpoint(checkpoint_file: str, model, optimizer=None, scheduler=None,
         optimizer.load_state_dict(checkpoint["optimizer"])
     if scheduler is not None:
         scheduler.load_state_dict(checkpoint["scheduler"])
+    if teacher_model is not None:
+        teacher_model.load_state_dict(checkpoint["teacher_dict"])
 
     return checkpoint['steps'], checkpoint["epochs"]
 
@@ -82,7 +106,7 @@ def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes:int, ignore_id
         intersection = (pred_inds[target_inds]).long().sum().data.cpu().item()  # Cast to long to prevent overflows
         union = pred_inds.long().sum().data.cpu().item() + target_inds.long().sum().data.cpu().item() - intersection
         if union == 0:
-            ious.append(float('nan'))  # If there is no ground truth, do not include in evaluation
+            ious.append(float('nan'))  # If there is no ground truth and no prediction, do not include in evaluation
         else:
             ious.append(float(intersection) / float(max(union, 1)))
 
@@ -170,6 +194,28 @@ def split_images(from_path, to_path, file_ext='png'):
         print(f"\rTransformed {i}/{len(images)}", end='')
 
     print('')
+
+
+def generate_pseudo_labels(model, loader, output_dir, device):
+    path = Path(output_dir)
+    path.mkdir(parents=True)
+    model.eval()
+    nr_samples = len(loader) * loader.batch_size
+    digits = len(str(nr_samples))
+    print(f"Generating pseudo labels for {nr_samples} images")
+    loop = tqdm(enumerate(loader), total=len(loader), leave=False)
+    for i, (image, target) in loop:
+        image = image.float().to(device)
+        pred = model(image)
+        pred = torch.squeeze(pred)
+        label = torch.argmax(pred, dim=len(pred.size()) - 3) # size as 4 entries if images are batched
+        if len(label.size()) == 3:
+            # / 255.0 because torch io expects float tensors [0.0, 1.0]
+            # replace with functionality that natively supports int
+            for j in range(len(label)):
+                save_image(label[i] / 255.0, os.path.join(output_dir, f"{i + j:0{digits}}.png"))
+        else:
+            save_image(label / 255.0, os.path.join(output_dir, f"{i:0{digits}}.png"))
 
 
 def send_slack_msg(content, text="Fallback Alert"):

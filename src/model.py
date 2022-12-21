@@ -86,10 +86,15 @@ class UnetResEncoder(nn.Module):
 		UNET Implementation using pretrained ResNet as Encoder
 	"""
 
-	def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34', freeze_encoder=False):
+	def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34', freeze_encoder=False, dropout_p=None):
 		super(UnetResEncoder, self).__init__()
 
-		self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch)
+		if dropout_p is not None:
+			self.dropout = nn.Dropout(p=dropout_p)
+		else:
+			self.dropout = None
+
+		self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch, drop_rate=dropout_p or 0.0)
 		feature_steps = self.encoder.feature_info.channels()
 		self.up = nn.ModuleList()
 
@@ -120,6 +125,8 @@ class UnetResEncoder(nn.Module):
 			x = up_step[0](x)
 			# concat downwards result
 			x = torch.cat((out_down[i + 1], x), dim=1)
+			if self.dropout is not None:
+				x = self.dropout(x)
 			# perform DoubleConv
 			x = up_step[1](x)
 
@@ -153,7 +160,7 @@ def pairwise_iter(iterable):
 
 
 def test():
-	x = torch.randn((1, 3, 512, 256))
+	x = torch.randn((4, 3, 512, 256))
 	model = UnetResEncoder()
 	model.eval()
 	out = model(x)

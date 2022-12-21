@@ -1,15 +1,12 @@
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
-import numpy as np
 import torch.optim as optim
 
 from transforms import transforms_train
 from datasets import CustomCityscapesDataset
-from model import CS_UNET, UnetResEncoder
-from utils import save_checkpoint, load_checkpoint, IoU
-
-from train import train_loop, val_fn, show_img_and_pred
+from model import UnetResEncoder
+from utils import IoU
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16

@@ -1,0 +1,3 @@
+[submodule "dependencies/mean-teacher"]
+	path = dependencies/mean-teacher
+	url = git@github.com:CuriousAI/mean-teacher.git
