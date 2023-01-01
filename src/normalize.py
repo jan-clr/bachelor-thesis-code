@@ -48,42 +48,40 @@ def normalize_data(path) -> str:
 	return norm_dir
 
 
-def load_imgs(path):
-	if not os.path.isdir(path):
-		print('Path is not a directory')
-		quit()
+class ImgLoader:
+	def __init__(self, path, batch_size=1):
+		if not os.path.isdir(path):
+			print('Path is not a directory.')
+		self.path = path
+		self.image_files = os.listdir(path)
+		self.batch_size = batch_size
+		self.batches = int(np.ceil(len(self.image_files) / float(batch_size)))
 
-	files = []
+	def __len__(self):
+		return self.batches
 
-	for file in os.listdir(path):
-		file_path = os.path.join(path, file)
-		parts = file.split('.')
-		name, ext = parts[0], parts[1]
-		if os.path.isfile(file_path):
-			files.append({'path': file_path, 'ext': ext, 'name': name})
+	def __iter__(self):
+		self.counter = 0
+		return self
 
-	images = []
+	def __next__(self):
+		if self.counter < self.batches - 1:
+			batch_files = self.image_files[self.counter * self.batch_size : (self.counter + 1) * self.batch_size]
+		elif self.counter == self.batches - 1:
+			batch_files = self.image_files[self.counter * self.batch_size : None]
+		else:
+			raise StopIteration
+		images = []
+		for file in batch_files:
+			cv_img = cv2.imread(os.path.join(self.path, file))
+			if cv_img is not None:
+				images.append(cv_img)
+		self.counter += 1
+		return np.array(images), batch_files
 
-	for i, img in enumerate(files):
-		print(i, img['name'])
-		cv_img = cv2.imread(img['path'])
-		if cv_img is not None:
-			images.append(cv_img)
 
-	images = np.array(images)
-	return images
-
-
-def main():
-	if len(sys.argv) != 2:
-		print('Please provide a path to the folder with the images you wish to be normalized.')
-		quit()
-
-	path = sys.argv[1]
-
-	#normalize_data(path)
-	images = load_imgs(path).astype('int32')
-
+def normalize_images(images):
+	images = images.astype('int32')
 	mean_img = np.mean(images, axis=0)
 	mean_img = mean_img.astype('uint8')
 	mean_val = np.mean(images)
@@ -93,11 +91,11 @@ def main():
 	max_val = np.max(images)
 	images = ((images - min_val) / (max_val - min_val) * 255.0).astype('uint8')
 
-	#print(images[0])
-	#for i, img in enumerate(images):
-	#	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-	#	cv2.imwrite(os.path.join(path, f"{i}.tif"), img)
+	return images
 
 
-if __name__ == '__main__':
-	main()
+def save_images(images, out_path, file_names):
+	assert len(images) == len(file_names)
+	for i, img in enumerate(images):
+		img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+		cv2.imwrite(os.path.join(out_path, file_names[i]), img)
