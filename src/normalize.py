@@ -2,7 +2,10 @@ import sys
 import os
 import cv2
 import numpy as np
+from scipy.ndimage import gaussian_filter
 
+
+CONTRAST_THRESHOLD = 0.6
 
 def normalize_data(path) -> str:
 	"""
@@ -53,7 +56,7 @@ class ImgLoader:
 		if not os.path.isdir(path):
 			print('Path is not a directory.')
 		self.path = path
-		self.image_files = os.listdir(path)
+		self.image_files = sorted(os.listdir(path))
 		self.batch_size = batch_size
 		self.batches = int(np.ceil(len(self.image_files) / float(batch_size)))
 
@@ -71,16 +74,19 @@ class ImgLoader:
 			batch_files = self.image_files[self.counter * self.batch_size : None]
 		else:
 			raise StopIteration
-		images = []
+		images, read_files = [], []
 		for file in batch_files:
 			cv_img = cv2.imread(os.path.join(self.path, file))
 			if cv_img is not None:
 				images.append(cv_img)
+				read_files.append(file)
+			else:
+				print(f"{file} could not be read. Ignoring.")
 		self.counter += 1
-		return np.array(images), batch_files
+		return np.array(images), read_files
 
 
-def normalize_images(images):
+def normalize_images(images, files, remove_low_contrast=True, overwrite_artifacts=True):
 	images = images.astype('int32')
 	mean_img = np.mean(images, axis=0)
 	mean_img = mean_img.astype('uint8')
@@ -91,7 +97,34 @@ def normalize_images(images):
 	max_val = np.max(images)
 	images = ((images - min_val) / (max_val - min_val) * 255.0).astype('uint8')
 
-	return images
+	if overwrite_artifacts:
+		max_val = np.max(mean_img)
+		min_val = np.min(mean_img)
+		mask = np.where(mean_img < min_val + (max_val - min_val) / 4)
+		for img in images:
+			blurred = gaussian_filter(img, sigma=7)
+			img[mask] = blurred[mask]
+
+	final_images, final_files = [], []
+
+	if remove_low_contrast:
+		for i, img in enumerate(images):
+			Y = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)[:, :, 0]
+			# compute min and max of Y
+			min_Y = np.min(Y)
+			max_Y = np.max(Y)
+
+			# compute contrast
+			contrast = (max_Y - min_Y) / (int(max_Y) + int(min_Y))
+			print(contrast, files[i])
+			if contrast > CONTRAST_THRESHOLD:
+				final_images.append(img)
+				final_files.append(files[i])
+	else:
+		final_images = images
+		final_files = files
+
+	return final_images, final_files
 
 
 def save_images(images, out_path, file_names):
