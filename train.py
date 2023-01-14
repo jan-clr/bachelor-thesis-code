@@ -19,7 +19,7 @@ from src.masks import CowMaskGenerator
 from src.transforms import transforms_train, transforms_train_mt, transforms_train_mt_basic, transforms_val, \
     transforms_generator
 from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
-from src.model import CS_UNET, UnetResEncoder
+from src.model import CS_UNET, UnetResEncoder, DeepLabV3plus
 from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end, generate_pseudo_labels
 from src.losses import cross_entropy_cons_loss
 from src.lib.mean_teacher.data import TwoStreamBatchSampler
@@ -57,6 +57,7 @@ DEV = True
 USE_COWMASK = True
 USE_ITERATIVE = False
 SKIP_SUPERVISED = False
+MODEL = 'dlv3p'
 
 
 def collate_split_batches(batch):
@@ -408,6 +409,21 @@ def get_current_consistency_weight(epoch):
     return CONSISTENCY * sigmoid_rampup(epoch, CONSISTENCY_RAMPUP_LENGTH)
 
 
+def create_models(model_name, num_classes, encoder='resnet101'):
+    if model_name == 'unet':
+        model = UnetResEncoder(in_ch=3, out_ch=num_classes, encoder_name=encoder or 'resnet34d', dropout_p=DROPOUT).to(
+            DEVICE)
+        teacher = UnetResEncoder(in_ch=3, out_ch=num_classes, encoder_name=encoder or 'resnet34d',
+                                 dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
+    elif model_name == 'dlv3p':
+        model = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT).to(DEVICE)
+        teacher = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
+    else:
+        raise RuntimeError("Model name must be either 'unet' or 'dlv3p'")
+
+    return model, teacher
+
+
 def main():
     if DEV:
         set_seeders()
@@ -415,6 +431,7 @@ def main():
     parser = argparse.ArgumentParser(description="Start Model Training.")
 
     parser.add_argument("-rn", "--runname", help="Use a specific name for the run")
+    parser.add_argument("--model", help="Model to use for training. Should be either 'unet' or 'dlv3p'")
     parser.add_argument("-enc", "--encoder", help="Name of the timm model to use as the encoder")
     parser.add_argument("-lr", help="Set the initial learning rate")
     parser.add_argument("-bs", help="Set the batch size")
@@ -455,6 +472,7 @@ def main():
     global CONTINUE
     global USE_ITERATIVE
     global SKIP_SUPERVISED
+    global MODEL
     label_rng = None
     unlabel_rng = None
 
@@ -488,6 +506,8 @@ def main():
         USE_ITERATIVE = args.iter
     if args.skip is not None:
         SKIP_SUPERVISED = args.skip
+    if args.model is not None:
+        MODEL = args.model
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -502,7 +522,7 @@ def main():
         + f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}"
         if not CONTINUE else
         f"{args.runname or 'test'}")
-    run_dir = f"./runs/{DATASET_NAME}/{run_name}"
+    run_dir = f"./runs/{DATASET_NAME}/{MODEL}/{run_name}"
     run_file = f"{run_dir}/model.pth.tar"
 
     current_dataset = DATASET_NAME
@@ -521,10 +541,7 @@ def main():
 
     print(out_ch)
 
-    model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=DROPOUT).to(
-        DEVICE)
-    teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d',
-                             dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
+    model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     consistency_loss_fn = cross_entropy_cons_loss
@@ -575,10 +592,7 @@ def main():
         generate_pseudo_labels(model=teacher, loader=generator_loaded, output_dir=output_path, device=DEVICE)
 
         # Train with pseudo labels
-        model = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d', dropout_p=DROPOUT).to(
-            DEVICE)
-        teacher = UnetResEncoder(in_ch=3, out_ch=out_ch, encoder_name=args.encoder or 'resnet34d',
-                                 dropout_p=DROPOUT_TEACHER).to(DEVICE)
+        model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
