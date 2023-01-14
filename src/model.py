@@ -5,6 +5,7 @@ import itertools
 from torchvision import models
 from typing import List
 from torch.nn import functional as F
+import segmentation_models_pytorch as smp
 
 
 class DoubleConv(nn.Module):
@@ -274,7 +275,16 @@ def pairwise_iter(iterable):
 
 
 def test_deeplabv3p():
-    model = DeepLabV3plus(in_ch=3, num_classes=19)
+    model = smp.DeepLabV3Plus(in_channels=3, classes=19, encoder_name='resnet101', encoder_weights='imagenet')
+    model1 = DeepLabV3plus(in_ch=3, num_classes=19)
+    print(model1)
+    print(model)
+    i, j = 0, 0
+    for m in model1.backbone.modules():
+        i += 1
+    for m in model.encoder.modules():
+        j += 1
+    print(i, j)
     x = torch.randn(4, 3, 224, 224)
     out = model(x)
     print(out.shape)

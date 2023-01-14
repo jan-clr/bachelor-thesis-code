@@ -259,8 +259,9 @@ class Trainer(object):
             class_loss = self.loss_fn(pred_stu_labeled, target)
             loss = class_loss
 
+
             # Unsupervised learning
-            if MT_ENABLED and self.teacher is not None and not skip_teacher:
+            if self.teacher is not None and not skip_teacher:
                 # Calc teacher predictions
                 pred_tch_unlabeled = self.teacher(input_unlabeled)
                 pred_tch_labeled = self.teacher(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
@@ -283,7 +284,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            if self.teacher is not None:
+            if MT_ENABLED and self.teacher is not None:
                 update_teacher_params(self.model, self.teacher, EMA_DECAY, self.step)
 
             jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred_stu_labeled, 1), 1),
@@ -548,8 +549,8 @@ def main():
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=255)
     consistency_loss_fn = cross_entropy_cons_loss
-    # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
+    # optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
