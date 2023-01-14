@@ -14,6 +14,7 @@ from tqdm import tqdm
 import inquirer
 import argparse
 from datetime import datetime
+import segmentation_models_pytorch as smp
 
 from src.masks import CowMaskGenerator
 from src.transforms import transforms_train, transforms_train_mt, transforms_train_mt_basic, transforms_val, \
@@ -23,7 +24,6 @@ from src.model import CS_UNET, UnetResEncoder, DeepLabV3plus
 from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end, generate_pseudo_labels
 from src.losses import cross_entropy_cons_loss
 from src.lib.mean_teacher.data import TwoStreamBatchSampler
-from src.lib.mean_teacher.losses import softmax_mse_loss
 from src.lib.mean_teacher.ramps import sigmoid_rampup
 
 LEARNING_RATE = 1e-4
@@ -418,6 +418,9 @@ def create_models(model_name, num_classes, encoder='resnet101'):
     elif model_name == 'dlv3p':
         model = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT).to(DEVICE)
         teacher = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
+    elif model_name == 'dlv3p_smp':
+        model = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder, encoder_weights='imagenet').to(DEVICE)
+        teacher = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder, encoder_weights='imagenet').to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     else:
         raise RuntimeError("Model name must be either 'unet' or 'dlv3p'")
 
