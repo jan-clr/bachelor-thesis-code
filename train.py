@@ -411,6 +411,7 @@ def get_current_consistency_weight(epoch):
 
 
 def create_models(model_name, num_classes, encoder='resnet101'):
+    print(f"Using encoder '{encoder}'")
     if model_name == 'unet':
         model = UnetResEncoder(in_ch=3, out_ch=num_classes, encoder_name=encoder or 'resnet34d', dropout_p=DROPOUT).to(
             DEVICE)
