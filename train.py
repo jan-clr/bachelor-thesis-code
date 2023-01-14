@@ -566,6 +566,17 @@ def main():
     else:
         cow_mask_iter = None
 
+    print(f"{'Training run': <15} {run_name}")
+    print(f"{'Saving to': <15} {run_dir}")
+    print(f"{'Model': <15} {MODEL}")
+    print(f"{'Encoder': <15} {args.encoder}")
+    print(f"{'batch size': <15} {BATCH_SIZE}")
+    print(f"{'learning rate': <15} {LEARNING_RATE}")
+    print(f"{'Dataset': <15} {current_dataset}")
+    print(f"{'MT enabled': <15} {MT_ENABLED}")
+    print(f"{'IT enabled': <15} {USE_ITERATIVE}")
+    print(f"{'ES Patience': <15} {ES_PATIENCE}")
+
     step = 0
     epoch_global = 0
     if CONTINUE and not USE_ITERATIVE:
