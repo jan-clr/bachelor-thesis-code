@@ -218,6 +218,15 @@ def generate_pseudo_labels(model, loader, output_dir, device):
             save_image(label / 255.0, os.path.join(output_dir, f"{i:0{digits}}.png"))
 
 
+def get_lowest_unused_int(l):
+    """
+    Returns the lowest non-negative integer that is not included in a list of integers
+    :param l: A list of integers
+    :return: the lowest uncontained integer >= 0
+    """
+    return min(set(range(max(l) + 2)) - set(l))
+
+
 def send_slack_msg(content, text="Fallback Alert"):
     if SLACK_WEBHOOK_URL is None:
         print("No webhook url specified. Make sure .env is setup correctly.")

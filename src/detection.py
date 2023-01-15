@@ -4,6 +4,11 @@ import torch
 from skimage import measure
 
 
+def load_image(path):
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    return img
+
+
 def detect_droplets(image):
     image[image != 2] = 0
     droplets = measure.label(image)
