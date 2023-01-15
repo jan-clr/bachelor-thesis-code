@@ -440,6 +440,7 @@ def main():
     parser.add_argument("-enc", "--encoder", help="Name of the timm model to use as the encoder")
     parser.add_argument("-lr", help="Set the initial learning rate")
     parser.add_argument("-bs", help="Set the batch size")
+    parser.add_argument("-bsul", help="Set the unlabeled batch size")
     parser.add_argument("-lrsp", help="Set the Patience for the learning rate scheduler")
     parser.add_argument("-lrsf", help="Set the Factor used to reduce the learning rate")
     parser.add_argument("-mf", help="Load from non default file")
@@ -466,6 +467,7 @@ def main():
 
     global LEARNING_RATE
     global BATCH_SIZE
+    global BATCH_SIZE_UNLABELED
     global LR_PATIENCE
     global LRS_FACTOR
     global LRS_ENABLED
@@ -485,6 +487,8 @@ def main():
         LEARNING_RATE = float(args.lr)
     if args.bs is not None:
         BATCH_SIZE = int(args.bs)
+    if args.bsul is not None:
+        BATCH_SIZE_UNLABELED = int(args.bsul)
     if args.lrsp is not None:
         LR_PATIENCE = int(args.lrsp)
     if args.lrsf is not None:

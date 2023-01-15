@@ -154,8 +154,11 @@ class VapourData(VisionDataset):
     """
 
     """
-    classes = [{'id': 0, 'name': 'background'}, {'id': 1, 'name': 'droplet_streak'},
-               {'id': 2, 'name': 'droplet_border'}, {'id': 3, 'name': 'droplet_inside'}]
+    classes = [{'id': 0, 'name': 'background'},
+               {'id': 1, 'name': 'droplet_streak'},
+               {'id': 2, 'name': 'droplet_border'},
+               {'id': 3, 'name': 'droplet_inside'},
+               {'id': 4, 'name': 'small_droplet'}]
 
     def __init__(self, root_dir: str = 'data', mode: str = 'train', id_to_use: str = 'labelIds',
                  transform: Optional[Callable] = None,
@@ -164,7 +167,8 @@ class VapourData(VisionDataset):
                  use_labeled: slice = None,
                  use_unlabeled: slice = None,
                  use_pseudo_labels: slice = None,
-                 pseudo_label_dir: str = None) -> None:
+                 pseudo_label_dir: str = None,
+                 ignore_labels=[]) -> None:
 
         super(VapourData, self).__init__(root_dir, transforms, transform, target_transform)
 
@@ -175,6 +179,9 @@ class VapourData(VisionDataset):
                                        mode)
         self.images = []
         self.targets = []
+        self.ignore = ignore_labels
+        self.classes = [lab for lab in self.classes if lab['id'] not in ignore_labels]
+        self.used_ids = [x['id'] for x in self.classes]
 
         tl_imdir, tl_tardir = 'leftImg8bit', 'gtFine'
         print(f"Loading Data from:\nImage Dir: {self.image_dir}\nTarget Dir: {self.target_dir}")
@@ -282,7 +289,12 @@ class VapourData(VisionDataset):
         image = Image.open(self.images[index]).convert('RGB')
         target = None
         if index in self.labeled_idxs:
-            target = Image.open(self.targets[index])
+            target = np.array(Image.open(self.targets[index]))
+            # Remove ignored labels and make sure all remaining labels have consecutive ids
+            for label_id in self.ignore:
+                target[target == label_id] = 0
+            for i, used_id in enumerate(self.used_ids):
+                target[target == used_id] = i
         elif index in self.unlabeled_idxs:
             target = np.full((image.size[0], image.size[1]), NO_LABEL)
         else:
