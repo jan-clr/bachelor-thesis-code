@@ -1,6 +1,12 @@
 # python train.py -bs 10 -rn res34d_upConv_AlbuV1_s320 -enc resnet34d -lr 1e-4 -lrsp 100 -lrsf 0.1 -mf "../runs/Cityscapes/res34d_upConv_AlbuV1_lrsp_5_lrsf_0.5_bs_16_lr_0.0001/model_best.pth.tar";
-# python train.py -bs 16 -rn res34d_nomt_aug2_20lbls -enc resnet34d -lr 1e-4 --lrs -lrsp 30 -lrsf 0.5 -lblr -20 --no-mt;
-python train.py -bs 16 -rn res34d_mt_lrson_100lbls_do_0.5_cow -enc resnet34d -lr 1e-3 --lrs -lrsp 5 -lrsf 0.1 -lblr -100 -ulblr 100- --dropout 0.5 --mtdelay 10;
-python train.py -bs 16 -rn res34d_mt_lrson_100lbls_do_0.5_cow -enc resnet34d -lr 1e-3 --lrs -lrsp 5 -lrsf 0.1 -lblr -100 -ulblr 100- --dropout 0.5 --mtdelay 0;
-python train.py -bs 14 -rn res34d_mt_lrson_100lbls_do_0.5_cow -enc resnet34d -lr 3e-5 --lrs -lrsp 5 -lrsf 0.1 -lblr -100 -ulblr 100- --dropout 0.5 --mtdelay 10;
-python train.py -bs 14 -rn res34d_mt_lrson_100lbls_do_0.5_cow -enc resnet34d -lr 3e-5 --lrs -lrsp 5 -lrsf 0.1 -lblr -100 -ulblr 100- --dropout 0.5 --mtdelay 0;
+# python train.py -bs 16 -rn res34d_nomt_aug2_100lbls_lrsp_30_lrsf_0.5_bs_16_lr_0.0001_p_30_16-12-2022_23-10-57 -enc resnet34d -lr 1e-4 --lrs -lrsp 30 -lrsf 0.5 -lblr -100 --no-mt --ctn;
+# python train.py -bs 16 -rn res34d_iterative_aug2_100lbls_lrsp_20_lrsf_0.5_bs_16_lr_0.0001_p_50_20-12-2022_22-13-41 -enc resnet34d -lr 1e-4 --lrs -lrsp 15 -lrsf 0.5 -lblr -100 -ulblr 100- --no-mt --iter --ctn --skip;
+#python train.py -bs 8 -bsul 6 -rn nomt_aug2_100lbls --model dlv3p_smp -lr 1e-2 -lrsp 15 -lrsf 0.5 -lblr -100 -ulblr 100- --mt --no-iter;
+#python train.py -bs 8 -rn nomt_aug2_alllbls --model dlv3p_smp -lr 1e-2 -lrsp 15 -lrsf 0.5 --no-mt --no-iter;
+python train.py -ds vapourbase -bs 16 -rn nomt_res34 --model unet -enc resnet34d -lr 1e-4 -lrsp 30 -lrsf 0.1 --no-mt --no-iter;
+python train.py -ds vapourbase -bs 16 -rn mt_res34 --model unet -enc resnet34d -lr 1e-3 -lrsp 30 -lrsf 0.5 --mt -lblr -488 -ulblr 488- --dropout 0.5 --no-iter;
+python train.py -ds vapourbase -bs 16 -rn nomt_res34 --model unet -enc resnet34d -lr 1e-3 -lrsp 15 -lrsf 0.1 --no-mt --no-iter;
+python train.py -ds vapourbase -bs 16 -rn nomt_res34 --model unet -enc resnet34d -lr 1e-3 -lrsp 15 -lrsf 0.5 --no-mt --no-iter;
+python train.py -ds vapourbase -bs 16 -rn mt_res34 --model unet -enc resnet34d -lr 1e-3 -lrsp 30 -lrsf 0.1 --mt -lblr -488 -ulblr 488- --dropout 0.5 --no-iter;
+python train.py -ds vapourbase -bs 16 -rn mt_res34 --model unet -enc resnet34d -lr 1e-4 -lrsp 30 -lrsf 0.5 --mt -lblr -488 -ulblr 488- --dropout 0.5 --no-iter;
+# python train.py -bs 16 -rn mt_lrson_100lbls_do_0.5_cow --model dlv3p -lr 1e-3 --lrs -lrsp 10 -lrsf 0.1 -lblr -100 -ulblr 100- --dropout 0.5 --mtdelay 0 --mt;
