@@ -9,18 +9,20 @@ def load_image(path):
     return img
 
 
-def detect_droplets(image):
+def detect_droplets(image, lower_percentile=80, upper_percentile=95):
     image[image != 2] = 0
     droplets = measure.label(image)
-    nr_droplets = np.unique(droplets) - 1
+    nr_droplets = len(np.unique(droplets)) - 1
     circles = []
-    for i in range(1, nr_droplets + 2):
-        pixel_locs = np.where(droplets == i)
-        center = np.mean(pixel_locs, dim=0)
+    for i in range(1, nr_droplets + 1):
+        pixel_locs = np.argwhere(droplets == i)
+        center = np.round(np.mean(pixel_locs, axis=0)).astype(int)
         distances = []
         for loc in pixel_locs:
             distances.append(np.linalg.norm(loc - center))
-        radius = np.mean(np.array(distances))
+        distances.sort()
+        used_distances = [d for d in distances if np.percentile(distances, lower_percentile) <= d <= np.percentile(distances, upper_percentile)]
+        radius = np.round(np.mean(np.array(used_distances))).astype(int)
         circles.append({'center': center, 'radius': radius})
 
     return circles
