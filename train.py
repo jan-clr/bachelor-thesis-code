@@ -17,7 +17,7 @@ from datetime import datetime
 import segmentation_models_pytorch as smp
 
 from src.masks import CowMaskGenerator
-from src.transforms import transforms_train, transforms_train_mt, transforms_train_mt_basic, transforms_val, \
+from src.transforms import transforms_train_cs, transforms_train_vap, transforms_train_mt, transforms_train_mt_basic, transforms_val, \
     transforms_generator
 from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
 from src.model import CS_UNET, UnetResEncoder, DeepLabV3plus
@@ -342,7 +342,7 @@ def val_fn(loader, model, loss_fn, epoch=0, writer=None, writer_suffix=''):
 
 
 def get_cs_loaders(data_dir, lbl_range, unlbl_range):
-    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train, low_res=True, use_labeled=lbl_range,
+    train_data = CustomCityscapesDataset(data_dir, transforms=transforms_train_cs, low_res=True, use_labeled=lbl_range,
                                          use_unlabeled=unlbl_range)
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
@@ -373,7 +373,7 @@ def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
 
 
 def get_vap_loaders(data_dir, lbl_range, unlbl_range):
-    train_data = VapourData(data_dir, transforms=transforms_train, use_labeled=lbl_range, use_unlabeled=unlbl_range)
+    train_data = VapourData(data_dir, transforms=transforms_train_vap, use_labeled=lbl_range, use_unlabeled=unlbl_range)
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
@@ -386,7 +386,7 @@ def get_vap_loaders(data_dir, lbl_range, unlbl_range):
 
 
 def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
-    train_data = VapourData(data_dir, transforms=transforms_train, use_labeled=lbl_range, use_unlabeled=unlbl_range)
+    train_data = VapourData(data_dir, transforms=transforms_train_mt_basic, use_labeled=lbl_range, use_unlabeled=unlbl_range)
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
     train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY,
@@ -616,7 +616,7 @@ def main():
     else:
         # Supervised learning cycle
         if not SKIP_SUPERVISED:
-            train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
+            train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train_cs, use_labeled=label_rng)
             train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY,
                                       worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True,
                                       collate_fn=collate_split_batches)
@@ -643,7 +643,7 @@ def main():
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                          cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
-        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train,
+        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train_cs,
                                             use_pseudo_labels=unlabel_rng, pseudo_label_dir=output_path)
         train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY,
                                   worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True,
@@ -659,7 +659,7 @@ def main():
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                          cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
-        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
+        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train_cs, use_labeled=label_rng)
         train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY,
                                   worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True,
                                   collate_fn=collate_split_batches)
