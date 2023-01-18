@@ -11,7 +11,10 @@ import torchvision.transforms.functional as TF
 from PIL import Image
 from src.utils import resize_images, split_images
 import cv2
+import torch.multiprocessing
 
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 NO_LABEL = 255
 
