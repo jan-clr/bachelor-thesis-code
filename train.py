@@ -259,7 +259,6 @@ class Trainer(object):
             class_loss = self.loss_fn(pred_stu_labeled, target)
             loss = class_loss
 
-
             # Unsupervised learning
             if self.teacher is not None and not skip_teacher:
                 # Calc teacher predictions
@@ -273,7 +272,7 @@ class Trainer(object):
                 # Calc consistency loss
                 consistency_loss_unlabeled = self.consistency_fn(pred_stu_unlabeled, pred_tch_unlabeled)
                 consistency_loss_labeled = self.consistency_fn(pred_stu_labeled,
-                                                          pred_tch_labeled) if CONS_LS_ON_LABELED_SAMPLES else 0
+                                                               pred_tch_labeled) if CONS_LS_ON_LABELED_SAMPLES else 0
 
                 # calculate losses depending on labeled or unlabeled samples
                 consistency_weight = get_current_consistency_weight(self.epoch_global - MT_DELAY)
@@ -346,7 +345,8 @@ def get_cs_loaders(data_dir, lbl_range, unlbl_range):
     val_data = CustomCityscapesDataset(data_dir, mode='val', transforms=transforms_val, low_res=True)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
-                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR, collate_fn=collate_split_batches)
+                                  worker_init_fn=seed_worker if DEV else None, generator=GENERATOR,
+                                  collate_fn=collate_split_batches)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
                                 worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
@@ -376,7 +376,7 @@ def get_vap_loaders(data_dir, lbl_range, unlbl_range):
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
                                   num_workers=NUM_WORKERS, worker_init_fn=seed_worker if DEV else None,
-                                  generator=GENERATOR)
+                                  generator=GENERATOR, collate_fn=collate_split_batches)
     val_dataloader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=PIN_MEMORY,
                                 worker_init_fn=seed_worker if DEV else None, generator=GENERATOR)
 
@@ -419,10 +419,13 @@ def create_models(model_name, num_classes, encoder='resnet101'):
                                  dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     elif model_name == 'dlv3p':
         model = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT).to(DEVICE)
-        teacher = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
+        teacher = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT_TEACHER).to(
+            DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     elif model_name == 'dlv3p_smp':
-        model = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder, encoder_weights='imagenet').to(DEVICE)
-        teacher = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder, encoder_weights='imagenet').to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
+        model = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder,
+                                  encoder_weights='imagenet').to(DEVICE)
+        teacher = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder,
+                                    encoder_weights='imagenet').to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     else:
         raise RuntimeError("Model name must be either 'unet' or 'dlv3p'")
 
@@ -440,6 +443,7 @@ def main():
     parser.add_argument("-enc", "--encoder", help="Name of the timm model to use as the encoder")
     parser.add_argument("-lr", help="Set the initial learning rate")
     parser.add_argument("-bs", help="Set the batch size")
+    parser.add_argument("-ds", help="Set the dataset name")
     parser.add_argument("-bsul", help="Set the unlabeled batch size")
     parser.add_argument("-lrsp", help="Set the Patience for the learning rate scheduler")
     parser.add_argument("-lrsf", help="Set the Factor used to reduce the learning rate")
@@ -480,6 +484,7 @@ def main():
     global USE_ITERATIVE
     global SKIP_SUPERVISED
     global MODEL
+    global DATASET_NAME
     label_rng = None
     unlabel_rng = None
 
@@ -517,6 +522,8 @@ def main():
         SKIP_SUPERVISED = args.skip
     if args.model is not None:
         MODEL = args.model
+    if args.ds is not None:
+        DATASET_NAME = args.ds
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -538,13 +545,22 @@ def main():
     data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
 
     # train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
-    train_loader, val_loader = (get_cs_loaders_mt(data_dir,
-                                                  lbl_range=label_rng if label_rng is not None else slice(None, None),
-                                                  unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0))
-                                if MT_ENABLED else
-                                get_cs_loaders(data_dir=data_dir,
-                                               lbl_range=label_rng if label_rng is not None else slice(None, None),
-                                               unlbl_range=slice(0, 0)))
+    train_loader, val_loader = ((get_cs_loaders_mt(data_dir,
+                                                   lbl_range=label_rng if label_rng is not None else slice(None, None),
+                                                   unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0))
+                                 if MT_ENABLED else
+                                 get_cs_loaders(data_dir=data_dir,
+                                                lbl_range=label_rng if label_rng is not None else slice(None, None),
+                                                unlbl_range=slice(0, 0)))
+                                if DATASET_NAME == 'Cityscapes' else
+                                (get_vap_loaders_mt(data_dir,
+                                                    lbl_range=label_rng if label_rng is not None else slice(None, None),
+                                                    unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0))
+                                 if MT_ENABLED else
+                                 get_cs_loaders(data_dir=data_dir,
+                                                lbl_range=label_rng if label_rng is not None else slice(None, None),
+                                                unlbl_range=slice(0, 0)))
+                                )
 
     out_ch = len(train_loader.dataset.classes)
 
@@ -590,22 +606,30 @@ def main():
         load_checkpoint(LOAD_PATH, model, except_layers=['final.weight', 'final.bias'], strict=False)
 
     if not USE_ITERATIVE:
-        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler, teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=cow_mask_iter, step=step, epoch_global=epoch_global)
+        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler,
+                          teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=cow_mask_iter, step=step,
+                          epoch_global=epoch_global)
         print("\nBeginning Training\n")
         trainer.train()
     else:
         # Supervised learning cycle
         if not SKIP_SUPERVISED:
             train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
-            train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
+            train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY,
+                                      worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True,
+                                      collate_fn=collate_split_batches)
             print("\nStarting supervised training step.\n")
-            trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_supervised_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "supervised1"), step=step, epoch_global=epoch_global)
+            trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_supervised_1",
+                              scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "supervised1"),
+                              step=step, epoch_global=epoch_global)
             trainer.train()
         # load checkpoint so best model is used for pseudo label generation
-        load_checkpoint(os.path.join(f"{run_dir}", 'supervised1', 'model_best.pth.tar'), model=model, teacher_model=teacher)
+        load_checkpoint(os.path.join(f"{run_dir}", 'supervised1', 'model_best.pth.tar'), model=model,
+                        teacher_model=teacher)
 
         # Generate pseudo labels
-        generator_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_generator, use_labeled=slice(0, 0), use_unlabeled=unlabel_rng)
+        generator_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_generator,
+                                                use_labeled=slice(0, 0), use_unlabeled=unlabel_rng)
         generator_loaded = DataLoader(generator_set, batch_size=1, shuffle=False)
         output_path = path.join(data_dir, f"pseudo_labels_1_{run_name}")
         print("\nGenerate pseudo labels.\n")
@@ -617,9 +641,13 @@ def main():
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                          cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
-        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_pseudo_labels=unlabel_rng, pseudo_label_dir=output_path)
-        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
-        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_pseudo_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "pseudo1"))
+        train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train,
+                                            use_pseudo_labels=unlabel_rng, pseudo_label_dir=output_path)
+        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY,
+                                  worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True,
+                                  collate_fn=collate_split_batches)
+        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_pseudo_1",
+                          scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "pseudo1"))
         print("\nTrain on pseudo labels.\n")
         trainer.train()
 
@@ -630,8 +658,11 @@ def main():
                                                          threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                          cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
         train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train, use_labeled=label_rng)
-        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True, collate_fn=collate_split_batches)
-        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_tune_1", scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "tune1"))
+        train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY,
+                                  worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True,
+                                  collate_fn=collate_split_batches)
+        trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, f"{run_name}_tune_1",
+                          scheduler=scheduler, teacher=teacher, run_dir=path.join(run_dir, "tune1"))
         print("\nFine tune on labeled data.\n")
         trainer.train()
 
