@@ -233,7 +233,7 @@ class Trainer(object):
         print("\nTraining Complete.")
         self.writer.add_hparams(
             {'lr': LEARNING_RATE, 'bsize': BATCH_SIZE, "lrs_factor": LRS_FACTOR, "lr_patience": LR_PATIENCE},
-            {'hparams/loss': self.best_loss, 'hparams/iou': self.best_iou}, run_name='.')
+            {'hparams/loss': self.best_loss, 'hparams/iou': self.best_iou, 'hparams/dropout': DROPOUT}, run_name='.')
 
         alert_training_end(self.run_name, self.epoch_global, stopped_early=(self.patience_counter >= ES_PATIENCE),
                            final_metrics={'best_loss': self.best_loss, 'best_iou': self.best_iou})
@@ -534,7 +534,7 @@ def main():
             exit()
 
     run_name = (
-        f"{args.runname or 'test'}_lrsp_{LR_PATIENCE}_lrsf_{LRS_FACTOR}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}_p_{ES_PATIENCE}_"
+        f"{args.runname or 'test'}_lrsp_{LR_PATIENCE}_lrsf_{LRS_FACTOR}_bs_{BATCH_SIZE}_lr_{LEARNING_RATE}_p_{ES_PATIENCE}_{f'do_{DROPOUT}_' if DROPOUT is not None else ''}"
         + (
             f"cons_{CONSISTENCY}_cramp_{CONSISTENCY_RAMPUP_LENGTH}_mtd_{MT_DELAY}_emad_{EMA_DECAY}_" if MT_ENABLED else '')
         + f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}"
