@@ -570,7 +570,7 @@ def main():
 
     model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=255)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(weight=torch.Tensor([]))
     consistency_loss_fn = cross_entropy_cons_loss
     optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
     # optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
