@@ -58,6 +58,7 @@ USE_COWMASK = True
 USE_ITERATIVE = False
 SKIP_SUPERVISED = False
 MODEL = 'dlv3p'
+ES_METRIC = 'iou'
 
 
 def collate_split_batches(batch):
@@ -201,26 +202,27 @@ class Trainer(object):
                 losses, ious = val_fn(self.val_loader, self.model, self.loss_fn, self.epoch_global, self.writer)
 
             val_loss = np.array(losses).sum() / len(losses)
+            val_iou = np.array(ious).sum() / len(ious)
             if self.scheduler is not None:
-                self.scheduler.step(val_loss)
+                self.scheduler.step(val_loss if ES_METRIC == 'loss' else val_iou)
             # early stopping
-            if self.best_loss is None:
+            if (self.best_loss is None and ES_METRIC == 'loss') or (self.best_iou is None and ES_METRIC == 'iou'):
                 self.best_loss = val_loss
-                self.best_iou = np.array(ious).sum() / len(ious)
+                self.best_iou = val_iou
                 save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer,
                                 scheduler=self.scheduler,
                                 epoch_global=self.epoch_global, filename=f"{self.run_dir}/model_best.pth.tar")
-            elif self.best_loss - val_loss > MIN_DELTA:
+            elif (ES_METRIC == 'loss' and self.best_loss - val_loss > MIN_DELTA) or (ES_METRIC == 'iou' and val_iou - self.best_iou > MIN_DELTA):
                 self.patience_counter = 0
                 self.best_loss = val_loss
-                self.best_iou = np.array(ious).sum() / len(ious)
+                self.best_iou = val_iou
                 save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer,
                                 scheduler=self.scheduler,
                                 epoch_global=self.epoch_global, filename=f"{self.run_dir}/model_best.pth.tar")
             else:
                 self.patience_counter += 1
                 print(
-                    f"No validation loss improvement since {self.patience_counter} epochs.\nStopping after another {ES_PATIENCE - self.patience_counter} epochs without improvement.")
+                    f"No validation {ES_METRIC} improvement since {self.patience_counter} epochs.\nStopping after another {ES_PATIENCE - self.patience_counter} epochs without improvement.")
 
             if self.patience_counter >= ES_PATIENCE:
                 print("Stopping early because of stagnant validation loss.")
@@ -410,21 +412,21 @@ def get_current_consistency_weight(epoch):
     return CONSISTENCY * sigmoid_rampup(epoch, CONSISTENCY_RAMPUP_LENGTH)
 
 
-def create_models(model_name, num_classes, encoder='resnet101'):
+def create_models(model_name, num_classes, encoder='resnet101', in_channels=3):
     print(f"Using encoder '{encoder}'")
     if model_name == 'unet':
-        model = UnetResEncoder(in_ch=3, out_ch=num_classes, encoder_name=encoder or 'resnet34d', dropout_p=DROPOUT).to(
+        model = UnetResEncoder(in_ch=in_channels, out_ch=num_classes, encoder_name=encoder or 'resnet34d', dropout_p=DROPOUT).to(
             DEVICE)
-        teacher = UnetResEncoder(in_ch=3, out_ch=num_classes, encoder_name=encoder or 'resnet34d',
+        teacher = UnetResEncoder(in_ch=in_channels, out_ch=num_classes, encoder_name=encoder or 'resnet34d',
                                  dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     elif model_name == 'dlv3p':
-        model = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT).to(DEVICE)
-        teacher = DeepLabV3plus(in_ch=3, num_classes=num_classes, dropout_p=DROPOUT_TEACHER).to(
+        model = DeepLabV3plus(in_ch=in_channels, num_classes=num_classes, dropout_p=DROPOUT).to(DEVICE)
+        teacher = DeepLabV3plus(in_ch=in_channels, num_classes=num_classes, dropout_p=DROPOUT_TEACHER).to(
             DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     elif model_name == 'dlv3p_smp':
-        model = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder,
+        model = smp.DeepLabV3Plus(in_channels=in_channels, classes=num_classes, encoder_name=encoder,
                                   encoder_weights='imagenet').to(DEVICE)
-        teacher = smp.DeepLabV3Plus(in_channels=3, classes=num_classes, encoder_name=encoder,
+        teacher = smp.DeepLabV3Plus(in_channels=in_channels, classes=num_classes, encoder_name=encoder,
                                     encoder_weights='imagenet').to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     else:
         raise RuntimeError("Model name must be either 'unet' or 'dlv3p'")
