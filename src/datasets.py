@@ -168,10 +168,12 @@ class VapourData(VisionDataset):
                  use_unlabeled: slice = None,
                  use_pseudo_labels: slice = None,
                  pseudo_label_dir: str = None,
-                 ignore_labels=[]) -> None:
+                 ignore_labels=None) -> None:
 
         super(VapourData, self).__init__(root_dir, transforms, transform, target_transform)
 
+        if ignore_labels is None:
+            ignore_labels = []
         self.root_dir = root_dir
         self.image_dir = os.path.join(root_dir, f'leftImg8bit{"_lowres" if low_res else ""}{"_split" if split else ""}',
                                       mode)
@@ -230,7 +232,7 @@ class VapourData(VisionDataset):
             # Save crops if necessary
             if split and os.path.isdir(self.image_dir) and os.path.isdir(self.target_dir) and not (
                     os.path.isdir(imdir_to) and os.path.isdir(tardir_to)):
-                split_images(from_path=self.image_dir, to_path=imdir_to, file_ext='tif')
+                split_images(from_path=self.image_dir, to_path=imdir_to, file_ext='*')
                 split_images(from_path=self.target_dir, to_path=tardir_to)
 
                 self.image_dir, self.target_dir = imdir_to, tardir_to
@@ -238,12 +240,29 @@ class VapourData(VisionDataset):
         target_file_ending = f'gtFine_{id_to_use}.png'
 
         # add files to index
-        for file_name in sorted(os.listdir(self.image_dir)):
-            target_name = "{}_{}".format(
-                file_name.split("_leftImg8bit")[0], target_file_ending
-            )
-            self.images.append(os.path.join(self.image_dir, file_name))
-            self.targets.append(os.path.join(self.target_dir, target_name))
+        unlabeled_images = []
+        for dir_name in sorted(os.listdir(self.image_dir)):
+            tardir = os.path.join(self.target_dir, dir_name)
+            imdir = os.path.join(self.image_dir, dir_name)
+            for file_name in sorted(os.listdir(imdir)):
+                target_name = "{}_{}".format(
+                    file_name.split("_leftImg8bit")[0], target_file_ending
+                )
+                file_path, target_path = os.path.join(imdir, file_name), os.path.join(tardir, target_name)
+                if os.path.isfile(target_path):
+                    self.images.append(file_path)
+                    self.targets.append(target_path)
+                else:
+                    unlabeled_images.append(file_path)
+
+        print(f"Found {len(self.images)} labeled and {len(unlabeled_images)} unlabeled images.")
+
+        # default use all images with targets
+        self.labeled_idxs = [idx for idx in range(len(self.images))]
+        self.unlabeled_idxs = []
+
+        if use_pseudo_labels or use_unlabeled is not None:
+            self.images += unlabeled_images
 
         # change targets for images in pseudo label range
         if use_pseudo_labels is not None and pseudo_label_dir is not None:
@@ -252,10 +271,6 @@ class VapourData(VisionDataset):
             for i in range(len(pseudo_targets)):
                 pseudo_targets[i] = os.path.join(pseudo_label_dir, pseudo_label_files[i])
             self.targets[use_pseudo_labels] = pseudo_targets
-
-        # default use all images with targets
-        self.labeled_idxs = [idx for idx in range(len(self.images))]
-        self.unlabeled_idxs = []
 
         # Update lists if arguments are set
         if use_labeled is not None:
@@ -312,7 +327,7 @@ class VapourData(VisionDataset):
 
 
 def main():
-    train_data = VapourData("../data/vapourbase", mode='train', split=True)
+    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=slice(488, None))
 
 
 if __name__ == '__main__':

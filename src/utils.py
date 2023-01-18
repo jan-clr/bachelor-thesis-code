@@ -170,7 +170,8 @@ def resize_images(from_path, to_path, size, anti_aliasing=True):
 
 
 def split_images(from_path, to_path, file_ext='png'):
-    print("Splitting ---------------------")# recreate dir structure
+    print("Splitting ---------------------")
+    # recreate dir structure
     Path(to_path).mkdir(parents=True, exist_ok=True)
 
     src_prefix = len(from_path) + len(os.path.sep)
@@ -188,7 +189,8 @@ def split_images(from_path, to_path, file_ext='png'):
         img = Image.open(img_file)
         split = TF.five_crop(img, size=[img.size[1] // 2, img.size[0] // 2])
         for idx, crop in enumerate(split[:4]):
-            crop.save(os.path.join(to_path, f"{idx}_{img_file[src_prefix:]}"))
+            subpath = Path(img_file[src_prefix:])
+            crop.save(os.path.join(to_path, subpath.parent, f"{idx}_{subpath.name}"))
 
         i += 1
         print(f"\rTransformed {i}/{len(images)}", end='')
