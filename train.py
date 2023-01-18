@@ -387,7 +387,7 @@ def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
     train_data = VapourData(data_dir, transforms=transforms_train, use_labeled=lbl_range, use_unlabeled=unlbl_range)
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
 
-    train_dataloader = DataLoader(train_data, shuffle=True, pin_memory=PIN_MEMORY,
+    train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY,
                                   batch_sampler=TwoStreamBatchSampler(train_data.unlabeled_idxs,
                                                                       train_data.labeled_idxs, batch_size=BATCH_SIZE,
                                                                       secondary_batch_size=BATCH_SIZE - BATCH_SIZE_UNLABELED),
