@@ -176,7 +176,7 @@ class VapourData(VisionDataset):
         super(VapourData, self).__init__(root_dir, transforms, transform, target_transform)
 
         if ignore_labels is None:
-            ignore_labels = []
+            ignore_labels = [3, 4]
         self.root_dir = root_dir
         self.image_dir = os.path.join(root_dir, f'leftImg8bit{"_lowres" if low_res else ""}{"_split" if split else ""}',
                                       mode)
@@ -330,7 +330,7 @@ class VapourData(VisionDataset):
 
 
 def main():
-    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=slice(488, None))
+    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None)
 
 
 if __name__ == '__main__':
