@@ -557,9 +557,9 @@ def main():
                                                     lbl_range=label_rng if label_rng is not None else slice(None, None),
                                                     unlbl_range=unlabel_rng if unlabel_rng is not None else slice(0, 0))
                                  if MT_ENABLED else
-                                 get_cs_loaders(data_dir=data_dir,
-                                                lbl_range=label_rng if label_rng is not None else slice(None, None),
-                                                unlbl_range=slice(0, 0)))
+                                 get_vap_loaders(data_dir=data_dir,
+                                                 lbl_range=label_rng if label_rng is not None else slice(None, None),
+                                                 unlbl_range=slice(0, 0)))
                                 )
 
     out_ch = len(train_loader.dataset.classes)
