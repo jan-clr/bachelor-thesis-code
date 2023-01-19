@@ -233,7 +233,7 @@ class Trainer(object):
         print("\nTraining Complete.")
         self.writer.add_hparams(
             {'lr': LEARNING_RATE, 'bsize': BATCH_SIZE, "lrs_factor": LRS_FACTOR, "lr_patience": LR_PATIENCE},
-            {'hparams/loss': self.best_loss, 'hparams/iou': self.best_iou, 'hparams/dropout': DROPOUT}, run_name='.')
+            {'hparams/loss': self.best_loss, 'hparams/iou': self.best_iou, 'hparams/dropout': DROPOUT or 0}, run_name='.')
 
         alert_training_end(self.run_name, self.epoch_global, stopped_early=(self.patience_counter >= ES_PATIENCE),
                            final_metrics={'best_loss': self.best_loss, 'best_iou': self.best_iou})
@@ -570,7 +570,7 @@ def main():
 
     model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=torch.Tensor([0.01, 1/0.0007, 1/0.0003]).to(DEVICE))
     consistency_loss_fn = cross_entropy_cons_loss
     optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
     # optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
