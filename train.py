@@ -22,7 +22,7 @@ from src.transforms import transforms_train_cs, transforms_train_vap, transforms
 from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
 from src.model import CS_UNET, UnetResEncoder, DeepLabV3plus
 from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end, generate_pseudo_labels
-from src.losses import cross_entropy_cons_loss
+from src.losses import CrossEntropyConsLoss
 from src.lib.mean_teacher.data import TwoStreamBatchSampler
 from src.lib.mean_teacher.ramps import sigmoid_rampup
 
@@ -35,7 +35,7 @@ NUM_WORKERS = 4
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
 MIN_DELTA = 1e-4
-ES_PATIENCE = 50
+ES_PATIENCE = 30
 LR_PATIENCE = 5
 LRS_FACTOR = 0.1
 LRS_ENABLED = True
@@ -570,8 +570,8 @@ def main():
 
     model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=torch.Tensor([0.01, 1/0.0007, 1/0.0003]).to(DEVICE))
-    consistency_loss_fn = cross_entropy_cons_loss
+    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=torch.Tensor([0.1, 1/0.07, 1/0.03]).to(DEVICE))
+    consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(weight=torch.Tensor([0.1, 1/0.07, 1/0.03]).to(DEVICE))
     optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
     # optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
