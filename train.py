@@ -59,6 +59,7 @@ USE_ITERATIVE = False
 SKIP_SUPERVISED = False
 MODEL = 'dlv3p'
 ES_METRIC = 'iou'
+VAP_WEIGHTS = [0.001, 1/0.0006, 1/0.0003]
 
 
 def collate_split_batches(batch):
@@ -570,8 +571,8 @@ def main():
 
     model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=torch.Tensor([0.1, 1/0.07, 1/0.03]).to(DEVICE))
-    consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(weight=torch.Tensor([0.1, 1/0.07, 1/0.03]).to(DEVICE))
+    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=torch.Tensor(VAP_WEIGHTS).to(DEVICE))
+    consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(weight=torch.Tensor(VAP_WEIGHTS).to(DEVICE))
     optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
     # optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
