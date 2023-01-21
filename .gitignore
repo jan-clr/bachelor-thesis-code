@@ -133,5 +133,6 @@ dmypy.json
 
 # Training data
 data
+traced_models
 
 playground.py
