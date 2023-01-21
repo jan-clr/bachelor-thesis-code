@@ -205,7 +205,7 @@ class Trainer(object):
             val_loss = np.array(losses).sum() / len(losses)
             val_iou = np.array(ious).sum() / len(ious)
             if self.scheduler is not None:
-                self.scheduler.step(val_loss if ES_METRIC == 'loss' else val_iou)
+                self.scheduler.step(val_loss if ES_METRIC == 'loss' else 1.0 - val_iou)
             # early stopping
             if (self.best_loss is None and ES_METRIC == 'loss') or (self.best_iou is None and ES_METRIC == 'iou'):
                 self.best_loss = val_loss
@@ -575,7 +575,7 @@ def main():
     consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(weight=torch.Tensor(VAP_WEIGHTS).to(DEVICE))
     # optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA if ES_METRIC != 'iou' else -MIN_DELTA,
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
 
