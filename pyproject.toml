@@ -1,0 +1,33 @@
+[build-system]
+# These are the assumed default build requirements from pip:
+# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
+requires = ["setuptools>=43.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vdetect"
+authors = [
+    {name = "Jan Claar", email = "mail@jan-claar.de"},
+]
+description = "This is a command line tool that uses a pytorch model to detect droplets in images of vapour in order to Measure their size."
+readme = "README.md"
+requires-python = ">=3.7"
+keywords = ["one", "two"]
+license = {text = "MIT"}
+classifiers = [
+    "Framework :: PyTorch",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    'torch'
+]
+version = '0.1'
+
+[project.scripts]
+vdetect = 'app:main'
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"app.data" = ["*.pt"]

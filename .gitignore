@@ -132,7 +132,7 @@ dmypy.json
 .pyre/
 
 # Training data
-data
+./data
 traced_models
 
 playground.py
