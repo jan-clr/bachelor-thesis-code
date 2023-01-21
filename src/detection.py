@@ -9,8 +9,8 @@ def load_image(path):
     return img
 
 
-def detect_droplets(image, lower_percentile=80, upper_percentile=95):
-    image[image != 2] = 0
+def detect_droplets(image, lower_percentile=80, upper_percentile=95, label_id=1):
+    image[image != label_id] = 0
     droplets = measure.label(image)
     nr_droplets = len(np.unique(droplets)) - 1
     circles = []
@@ -26,3 +26,18 @@ def detect_droplets(image, lower_percentile=80, upper_percentile=95):
         circles.append({'center': center, 'radius': radius})
 
     return circles
+
+
+def detect_streaks(image, label_id=3):
+    image[image != label_id] = 0
+    droplets = measure.label(image)
+    labels = np.unique(droplets)[1:]
+    nr_droplets = len(labels)
+    rects = []
+    for i in labels:
+        pixel_locs = np.argwhere(droplets == i)
+        rect = cv2.minAreaRect(pixel_locs)
+        rects.append(rect)
+
+    return rects
+        
