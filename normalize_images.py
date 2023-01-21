@@ -1,8 +1,5 @@
 import argparse
-from src.normalize import normalize_images, ImgLoader, save_images
-from pathlib import Path
-from tqdm import tqdm
-import shutil
+from src.normalize import normalize_images_batched
 
 
 def main():
@@ -16,19 +13,7 @@ def main():
 
     print(f"\nNormalizing images in {args.inpath} and saving to {args.outpath}")
 
-    path = Path(args.outpath)
-    if path.exists():
-        delete = input('Folder already exists. Delete? [y/n]:')
-        if bool(delete):
-            shutil.rmtree(path)
-    path.mkdir(parents=True, exist_ok=False)
-
-    loader = ImgLoader(args.inpath, batch_size=int(args.bsize))
-    loop = tqdm(enumerate(loader), total=len(loader))
-
-    for batch, (images, files) in loop:
-        normalized_images, files = normalize_images(images, files)
-        save_images(normalized_images, out_path=args.outpath, file_names=files)
+    normalize_images_batched(args.inpath, args.outpath, args.bsize)
 
 
 if __name__ == '__main__':

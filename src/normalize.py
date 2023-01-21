@@ -1,8 +1,11 @@
-import sys
 import os
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
+import shutil
+from pathlib import Path
+from src.utils import save_images, ImgLoader
+from tqdm import tqdm
 
 CONTRAST_THRESHOLD = 0.6
 
@@ -51,41 +54,6 @@ def normalize_data(path) -> str:
     return norm_dir
 
 
-class ImgLoader:
-    def __init__(self, path, batch_size=1):
-        if not os.path.isdir(path):
-            print('Path is not a directory.')
-        self.path = path
-        self.image_files = sorted(os.listdir(path))
-        self.batch_size = batch_size
-        self.batches = int(np.ceil(len(self.image_files) / float(batch_size)))
-
-    def __len__(self):
-        return self.batches
-
-    def __iter__(self):
-        self.counter = 0
-        return self
-
-    def __next__(self):
-        if self.counter < self.batches - 1:
-            batch_files = self.image_files[self.counter * self.batch_size: (self.counter + 1) * self.batch_size]
-        elif self.counter == self.batches - 1:
-            batch_files = self.image_files[self.counter * self.batch_size: None]
-        else:
-            raise StopIteration
-        images, read_files = [], []
-        for file in batch_files:
-            cv_img = cv2.imread(os.path.join(self.path, file))
-            if cv_img is not None:
-                images.append(cv_img)
-                read_files.append(file)
-            else:
-                print(f"{file} could not be read. Ignoring.")
-        self.counter += 1
-        return np.array(images), read_files
-
-
 def normalize_images(images, files, remove_low_contrast=True, overwrite_artifacts=True):
     images = images.astype('int32')
     mean_img = np.mean(images, axis=0)
@@ -127,8 +95,17 @@ def normalize_images(images, files, remove_low_contrast=True, overwrite_artifact
     return final_images, final_files
 
 
-def save_images(images, out_path, file_names):
-    assert len(images) == len(file_names)
-    for i, img in enumerate(images):
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        cv2.imwrite(os.path.join(out_path, file_names[i]), img)
+def normalize_images_batched(inpath, outpath, bsize):
+    path = Path(outpath)
+    if path.exists():
+        delete = input('Folder already exists. Delete? [y/n]:')
+        if bool(delete):
+            shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=False)
+
+    loader = ImgLoader(inpath, batch_size=int(bsize))
+    loop = tqdm(enumerate(loader), total=len(loader))
+
+    for batch, (images, files) in loop:
+        normalized_images, files = normalize_images(images, files)
+        save_images(normalized_images, out_path=outpath, file_names=files)

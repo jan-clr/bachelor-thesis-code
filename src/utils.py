@@ -1,3 +1,4 @@
+import cv2
 import torch
 import os
 import numpy as np
@@ -287,3 +288,45 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+class ImgLoader:
+    def __init__(self, path, batch_size=1):
+        if not os.path.isdir(path):
+            print('Path is not a directory.')
+        self.path = path
+        self.image_files = sorted(os.listdir(path))
+        self.batch_size = batch_size
+        self.batches = int(np.ceil(len(self.image_files) / float(batch_size)))
+
+    def __len__(self):
+        return self.batches
+
+    def __iter__(self):
+        self.counter = 0
+        return self
+
+    def __next__(self):
+        if self.counter < self.batches - 1:
+            batch_files = self.image_files[self.counter * self.batch_size: (self.counter + 1) * self.batch_size]
+        elif self.counter == self.batches - 1:
+            batch_files = self.image_files[self.counter * self.batch_size: None]
+        else:
+            raise StopIteration
+        images, read_files = [], []
+        for file in batch_files:
+            cv_img = cv2.imread(os.path.join(self.path, file))
+            if cv_img is not None:
+                images.append(cv_img)
+                read_files.append(file)
+            else:
+                print(f"{file} could not be read. Ignoring.")
+        self.counter += 1
+        return np.array(images), read_files
+
+
+def save_images(images, out_path, file_names):
+    assert len(images) == len(file_names)
+    for i, img in enumerate(images):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        cv2.imwrite(os.path.join(out_path, file_names[i]), img)
