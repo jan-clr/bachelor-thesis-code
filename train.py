@@ -60,6 +60,7 @@ SKIP_SUPERVISED = False
 MODEL = 'dlv3p'
 ES_METRIC = 'iou'
 VAP_WEIGHTS = None #torch.Tensor([0.1, 1/0.06, 1/0.03]).to(DEVICE)
+OPTIMIZER = 'adam'
 
 
 def collate_split_batches(batch):
@@ -443,6 +444,7 @@ def main():
 
     parser.add_argument("-rn", "--runname", help="Use a specific name for the run")
     parser.add_argument("--model", help="Model to use for training. Should be either 'unet' or 'dlv3p'")
+    parser.add_argument("--optimizer", help="Optimizer to use for training. Should be either 'adam' or 'sgd'")
     parser.add_argument("-enc", "--encoder", help="Name of the timm model to use as the encoder")
     parser.add_argument("-lr", help="Set the initial learning rate")
     parser.add_argument("-bs", help="Set the batch size")
@@ -488,6 +490,7 @@ def main():
     global SKIP_SUPERVISED
     global MODEL
     global DATASET_NAME
+    global OPTIMIZER
     label_rng = None
     unlabel_rng = None
 
@@ -525,6 +528,8 @@ def main():
         SKIP_SUPERVISED = args.skip
     if args.model is not None:
         MODEL = args.model
+    if args.optimizer is not None:
+        OPTIMIZER = args.optimizer
     if args.ds is not None:
         DATASET_NAME = args.ds
 
@@ -574,7 +579,7 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=VAP_WEIGHTS)
     consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(weight=VAP_WEIGHTS)
 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE) if DATASET_NAME == 'Cityscapes' else optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4) if OPTIMIZER == 'sgd' else optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
