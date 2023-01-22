@@ -59,7 +59,7 @@ USE_ITERATIVE = False
 SKIP_SUPERVISED = False
 MODEL = 'dlv3p'
 ES_METRIC = 'iou'
-VAP_WEIGHTS = None #torch.Tensor([0.001, 1/0.0006, 1/0.0003]).to(DEVICE)
+VAP_WEIGHTS = torch.Tensor([0.1, 1/0.06, 1/0.03]).to(DEVICE)
 
 
 def collate_split_batches(batch):
