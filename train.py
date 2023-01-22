@@ -571,7 +571,7 @@ def main():
 
     model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=VAP_WEIGHTS)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255)
     consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(weight=VAP_WEIGHTS)
 
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE) if DATASET_NAME == 'Cityscapes' else optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4)
