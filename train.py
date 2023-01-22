@@ -606,7 +606,10 @@ def main():
         step, epoch_global = load_checkpoint(run_file, model, teacher_model=teacher, optimizer=optimizer,
                                              scheduler=scheduler)
     elif LOAD_PATH is not None:
+        # only works for unet atm
         load_checkpoint(LOAD_PATH, model, except_layers=['final.weight', 'final.bias'], strict=False)
+        if teacher is not None:
+            load_checkpoint(LOAD_PATH, teacher, except_layers=['final.weight', 'final.bias'], strict=False)
 
     if not USE_ITERATIVE:
         trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler,
