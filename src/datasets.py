@@ -12,6 +12,7 @@ from PIL import Image
 from src.utils import resize_images, split_images
 import cv2
 import torch.multiprocessing
+from src.transforms import transforms_train_vap
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -307,7 +308,7 @@ class VapourData(VisionDataset):
         image = Image.open(self.images[index]).convert('RGB')
         target = None
         if index in self.labeled_idxs:
-            target = np.array(Image.open(self.targets[index]))
+            target = np.array(Image.open(self.targets[index]).convert('L'))
             # Remove ignored labels and make sure all remaining labels have consecutive ids
             for label_id in self.ignore:
                 target[target == label_id] = 0
@@ -330,7 +331,9 @@ class VapourData(VisionDataset):
 
 
 def main():
-    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None)
+    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None, transforms=transforms_train_vap)
+
+    print(train_data[0][1].shape)
 
 
 if __name__ == '__main__':
