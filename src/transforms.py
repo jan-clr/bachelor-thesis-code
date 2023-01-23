@@ -166,6 +166,18 @@ def transforms_val(image, mask):
     return image, mask
 
 
+def transform_eval(image):
+    image = np.array(image)
+
+    transform = A.Compose(
+        [A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)), ToTensorV2()]
+    )
+    augmented = transform(image=image)
+    image = augmented["image"]
+
+    return image
+
+
 def transforms_train_torch(image, mask):
     """
 
