@@ -13,9 +13,8 @@
 
 # Train on vapour dataset 
 #python train.py -ds vapourbase -bs 12 -rn nomt_res34 --model unet -enc resnet34d -lr 1e-4 -lrsp 30 -lrsf 0.1 --no-mt --no-iter;
-python train.py -ds vapourbase -bs 12 -rn nomt_res34_adam_noweights --model unet -enc resnet34d -lr 1e-3 -lrsp 15 -lrsf 0.1 --no-mt --no-iter --optimizer adam; # -mf runs/Cityscapes/unet/res34d_fulllbls_normend_lrsp_10_lrsf_0.5_bs_16_lr_0.0001_p_30_21-01-2023_22-17-27/model_best.pth.tar;
-python train.py -ds vapourbase -bs 12 -rn nomt_res34_adam_noweights --model unet -enc resnet34d -lr 1e-3 -lrsp 15 -lrsf 0.1 --no-mt --no-iter --optimizer adam -mf runs/Cityscapes/unet/res34d_fulllbls_normend_lrsp_10_lrsf_0.5_bs_16_lr_0.0001_p_30_21-01-2023_22-17-27/model_best.pth.tar;
-python train.py -ds vapourbase -bs 12 -rn nomt_res34_adam_noweights --model unet -enc resnet34d -lr 1e-3 -lrsp 15 -lrsf 0.1 --no-mt --no-iter --optimizer sgd -mf runs/Cityscapes/unet/res34d_fulllbls_normend_lrsp_10_lrsf_0.5_bs_16_lr_0.0001_p_30_21-01-2023_22-17-27/model_best.pth.tar;
+python train.py -ds vapourbase -bs 12 -rn nomt_res34_adam_noweights_noempty --model unet -enc resnet34d -lr 1e-3 -lrsp 15 -lrsf 0.1 --no-mt --no-iter --optimizer adam; # -mf runs/Cityscapes/unet/res34d_fulllbls_normend_lrsp_10_lrsf_0.5_bs_16_lr_0.0001_p_30_21-01-2023_22-17-27/model_best.pth.tar;
+python train.py -ds vapourbase -bs 12 -rn nomt_preres34_adam_noweights_noempty --model unet -enc resnet34d -lr 1e-3 -lrsp 15 -lrsf 0.1 --no-mt --no-iter --optimizer adam -mf runs/Cityscapes/unet/res34d_fulllbls_normend_lrsp_10_lrsf_0.5_bs_16_lr_0.0001_p_30_21-01-2023_22-17-27/model_best.pth.tar;
 # python train.py -ds vapourbase -bs 8 -bsul 6 -rn mt_res34_sgd --model unet -enc resnet34d -lr 1e-3 -lrsp 30 -lrsf 0.5 --mt -lblr -488 -ulblr 488- --dropout 0.5 --no-iter; # -mf runs/Cityscapes/unet/res34d_fulllbls_normend_lrsp_10_lrsf_0.5_bs_16_lr_0.0001_p_30_21-01-2023_22-17-27/model_best.pth.tar;
 
 # Rerun best Training on Cityscapes
