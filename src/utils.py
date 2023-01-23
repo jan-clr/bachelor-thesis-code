@@ -170,7 +170,7 @@ def resize_images(from_path, to_path, size, anti_aliasing=True):
     print('')
 
 
-def split_images(from_path, to_path, file_ext='png'):
+def split_images(from_path, to_path, file_ext='png', split_factor=2, filter_only_background=True):
     print("Splitting ---------------------")
     # recreate dir structure
     Path(to_path).mkdir(parents=True, exist_ok=True)
@@ -184,20 +184,32 @@ def split_images(from_path, to_path, file_ext='png'):
 
     images = glob(f"{from_path}/**/*.{file_ext}", recursive=True)
 
-    ImageFile.LOAD_TRUNCATED_IMAGES = True
     i = 0
     for img_file in images:
-        img = Image.open(img_file)
-        split = TF.five_crop(img, size=[img.size[1] // 2, img.size[0] // 2])
-        for idx, crop in enumerate(split[:4]):
+        img = cv2.imread(img_file)
+        splits = split_image(img, split_factor)
+        for idx, crop in enumerate(splits):
+            if filter_only_background and (crop == 0).all():
+                continue
             subpath = Path(img_file[src_prefix:])
-            crop.save(os.path.join(to_path, subpath.parent, f"{idx}_{subpath.name}"))
+            cv2.imwrite(os.path.join(to_path, subpath.parent, f"{idx}_{subpath.name}"), crop)
 
         i += 1
         print(f"\rTransformed {i}/{len(images)}", end='')
 
     print('')
 
+
+def split_image(image, split_factor):
+    h, w, _ = image.shape if len(image.shape) == 3 else (image.shape[0], image.shape[1], 1)
+    y_points = np.arange(0, h, h // split_factor)
+    x_points = np.arange(0, w, w // split_factor)
+    splits = []
+    for i in range(split_factor):
+        for j in range(split_factor):
+            splits.append(image[y_points[i]: y_points[i] + h // split_factor, x_points[j]: x_points[j] + w // split_factor])
+
+    return splits
 
 def generate_pseudo_labels(model, loader, output_dir, device):
     path = Path(output_dir)
