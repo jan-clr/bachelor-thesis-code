@@ -1,12 +1,16 @@
-from detection import load_image
+import glob
+
+import cv2
+
+from src.detection import load_image
 import torch
 import argparse
-from normalize import ImgLoader, normalize_images_batched
+from src.normalize import ImgLoader, normalize_images_batched
 import os
 from tqdm import tqdm
 from pathlib import Path
 import shutil
-from transforms import transform_eval
+from src.transforms import transform_eval
 from torchvision.utils import save_image
 
 ID_TO_COLOR = {
@@ -29,17 +33,12 @@ def parse_arguments():
     parser.add_argument('--norm', help='Normalize the images before applying the model. '
                                        '\nThis may use drive space equivalent to the size of your data.',
                         action='store_true')
+    parser.add_argument('--device', help="Set device manually.")
     return parser.parse_args()
 
 
 def prepare_model(path, device):
     return torch.jit.load(path).to(device).eval()
-
-
-def preprocess_imgs(impath, bsize=10):
-    norm_path = os.path.join(impath, 'normalized')
-    normalize_images_batched(inpath=impath, outpath=norm_path, bsize=bsize)
-    return norm_path
 
 
 def unfold_sliding_window(img):
@@ -53,17 +52,39 @@ def transform_inputs(images):
     tensors = []
     for img in images:
         tensor = transform_eval(img)
+        tensors.append(tensor)
     # TODO sliding window construct
 
     return torch.stack(tensors)
 
 
 def mask_to_col(mask):
-    mask = mask.clone()
+    col_mask = torch.zeros((*mask.shape, 3))
     for id in torch.unique(mask):
-        mask[mask == id] = ID_TO_COLOR[id] if id in ID_TO_COLOR.keys() else (255, 255, 255)
+        col_mask[mask == id] = torch.Tensor(
+            ID_TO_COLOR[id.item()] if id.item() in ID_TO_COLOR.keys() else (255, 255, 255))
 
-    return mask
+    return col_mask.permute(2, 0, 1)
+
+
+def create_overlays(impath, maskpath, outpath):
+    images, masks = [], []
+    img_files = sorted(glob.glob(os.path.join(impath, '*.*')))
+    mask_files = sorted(glob.glob(os.path.join(maskpath, '*color.*')))
+    print(img_files)
+    print(mask_files)
+    for img_file, mask_file in zip(img_files, mask_files):
+        img_path = Path(img_file)
+        img = cv2.imread(img_file)
+        mask = cv2.imread(mask_file)
+        overlay = cv2.addWeighted(mask, 0.45, img, 1.0, 0)
+        cv2.imwrite(os.path.join(outpath, f"{img_path.stem}_overlay.png"), overlay)
+
+
+def preprocess_imgs(impath, bsize=10):
+    norm_path = os.path.join(impath, 'normalized')
+    normalize_images_batched(inpath=impath, outpath=norm_path, bsize=bsize)
+    return norm_path
 
 
 def process_imgs(model, impath, outpath, bsize=1, device='cpu'):
@@ -86,5 +107,17 @@ def process_imgs(model, impath, outpath, bsize=1, device='cpu'):
             masks = torch.argmax(predictions, dim=1)
             for i, mask in enumerate(masks):
                 img_path = Path(files[i])
-                save_image(mask, os.path.join(outpath, f"{img_path.stem}_ids.png"))
-                save_image(mask_to_col(mask), os.path.join(outpath, f"{img_path.stem}_color.png"))
+                save_image(mask / 255.0, os.path.join(outpath, f"{img_path.stem}_ids.png"))
+                save_image(mask_to_col(mask) / 255.0, os.path.join(outpath, f"{img_path.stem}_color.png"))
+
+
+def postprocess_masks():
+    pass
+
+
+def main():
+    create_overlays(impath='../../data/vdetect_test', maskpath='../../data/vdetect_test/masks', outpath='../../data/vdetect_test/masks')
+
+
+if __name__ == '__main__':
+    main()

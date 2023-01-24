@@ -22,7 +22,7 @@ def main():
     args = parser.parse_args()
 
     if args.arch == 'unet':
-        model = UnetResEncoder(out_ch=3)
+        model = UnetResEncoder(in_ch=3, out_ch=3, encoder_name='resnet34d')
     else:
         exit()
 

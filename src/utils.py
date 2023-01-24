@@ -14,6 +14,7 @@ import torchvision.transforms.functional as F
 from torchvision.utils import save_image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import fnmatch
 
 load_dotenv()
 
@@ -170,7 +171,7 @@ def resize_images(from_path, to_path, size, anti_aliasing=True):
     print('')
 
 
-def split_images(from_path, to_path, file_ext='png', split_factor=2, filter_only_background=True):
+def split_images(from_path, to_path, file_ext='png', split_factor=2, filter_only_background=False):
     print("Splitting ---------------------")
     # recreate dir structure
     Path(to_path).mkdir(parents=True, exist_ok=True)
@@ -294,14 +295,6 @@ def alert_training_end(run_name, epoch=0, final_metrics=None, stopped_early=Fals
     send_slack_msg(blocks, "Training Complete")
 
 
-def main():
-    alert_training_end('testrun', 10, stopped_early=False)
-
-
-if __name__ == '__main__':
-    main()
-
-
 class ImgLoader:
     def __init__(self, path, batch_size=1):
         if not os.path.isdir(path):
@@ -342,3 +335,19 @@ def save_images(images, out_path, file_names):
     for i, img in enumerate(images):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         cv2.imwrite(os.path.join(out_path, file_names[i]), img)
+
+
+def remove_where_mask_empty(impath, maskpath, empty_label=0):
+    mask_files = glob(os.path.join(maskpath, '**/*labelIds*'), recursive=True)
+    img_files = glob(os.path.join(impath, '**/*.*'), recursive=True)
+    for mf in mask_files:
+        mask = cv2.imread(mf, cv2.IMREAD_GRAYSCALE)
+        if (mask == empty_label).all():
+            mask_path = Path(mf)
+            match_pattern = mask_path.name[:-len('gtFine_labelIds.png')] + 'leftImg8bit'
+            matching_imgs = [fn for fn in img_files if match_pattern in fn]
+            for img in matching_imgs:
+                if os.path.isfile(img):
+                    os.remove(img)
+            if os.path.isfile(mf):
+                os.remove(mf)
