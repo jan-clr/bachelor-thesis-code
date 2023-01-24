@@ -61,6 +61,7 @@ MODEL = 'dlv3p'
 ES_METRIC = 'iou'
 VAP_WEIGHTS = None #torch.Tensor([0.1, 1/0.06, 1/0.03]).to(DEVICE)
 OPTIMIZER = 'adam'
+SPLIT_FACTOR = 2
 
 
 def collate_split_batches(batch):
@@ -375,8 +376,8 @@ def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
 
 
 def get_vap_loaders(data_dir, lbl_range, unlbl_range):
-    train_data = VapourData(data_dir, transforms=transforms_train_vap, use_labeled=lbl_range, use_unlabeled=unlbl_range)
-    val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
+    train_data = VapourData(data_dir, transforms=transforms_train_vap, use_labeled=lbl_range, use_unlabeled=unlbl_range, split_factor=SPLIT_FACTOR)
+    val_data = VapourData(data_dir, mode='val', transforms=transforms_val, split_factor=SPLIT_FACTOR)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
                                   num_workers=NUM_WORKERS, worker_init_fn=seed_worker if DEV else None,
@@ -388,8 +389,8 @@ def get_vap_loaders(data_dir, lbl_range, unlbl_range):
 
 
 def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
-    train_data = VapourData(data_dir, transforms=transforms_train_mt_basic, use_labeled=lbl_range, use_unlabeled=unlbl_range)
-    val_data = VapourData(data_dir, mode='val', transforms=transforms_val)
+    train_data = VapourData(data_dir, transforms=transforms_train_mt_basic, use_labeled=lbl_range, use_unlabeled=unlbl_range, split_factor=SPLIT_FACTOR)
+    val_data = VapourData(data_dir, mode='val', transforms=transforms_val, split_factor=SPLIT_FACTOR)
 
     train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY,
                                   batch_sampler=TwoStreamBatchSampler(train_data.unlabeled_idxs,
@@ -471,6 +472,7 @@ def main():
                         action=argparse.BooleanOptionalAction)
     parser.add_argument("--skip", help="Skip supervised training in iterative approach when loading a model.",
                         action=argparse.BooleanOptionalAction)
+    parser.add_argument('--split', help='Set the factor for splitting the training images')
 
     args = parser.parse_args()
 
@@ -491,6 +493,7 @@ def main():
     global MODEL
     global DATASET_NAME
     global OPTIMIZER
+    global SPLIT_FACTOR
     label_rng = None
     unlabel_rng = None
 
@@ -532,6 +535,8 @@ def main():
         OPTIMIZER = args.optimizer
     if args.ds is not None:
         DATASET_NAME = args.ds
+    if args.split is not None:
+        SPLIT_FACTOR = int(args.split)
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
