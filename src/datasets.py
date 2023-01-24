@@ -9,7 +9,7 @@ from cityscapesscripts.preparation import createTrainIdLabelImgs
 import glob
 import torchvision.transforms.functional as TF
 from PIL import Image
-from src.utils import resize_images, split_images
+from src.utils import resize_images, split_images, remove_where_mask_empty
 import cv2
 import torch.multiprocessing
 from src.transforms import transforms_train_vap
@@ -172,16 +172,18 @@ class VapourData(VisionDataset):
                  use_unlabeled: slice = None,
                  use_pseudo_labels: slice = None,
                  pseudo_label_dir: str = None,
-                 ignore_labels=None) -> None:
+                 ignore_labels=None,
+                 split_factor=2,
+                 remove_empty=True) -> None:
 
         super(VapourData, self).__init__(root_dir, transforms, transform, target_transform)
 
         if ignore_labels is None:
             ignore_labels = [3, 4]
         self.root_dir = root_dir
-        self.image_dir = os.path.join(root_dir, f'leftImg8bit{"_lowres" if low_res else ""}{"_split" if split else ""}',
+        self.image_dir = os.path.join(root_dir, f'leftImg8bit{"_lowres" if low_res else ""}{f"_split{split_factor}" if split else ""}',
                                       mode)
-        self.target_dir = os.path.join(root_dir, f'gtFine{"_lowres" if low_res else ""}{"_split" if split else ""}',
+        self.target_dir = os.path.join(root_dir, f'gtFine{"_lowres" if low_res else ""}{f"_split{split_factor}" if split else ""}',
                                        mode)
         self.images = []
         self.targets = []
@@ -229,15 +231,17 @@ class VapourData(VisionDataset):
 
             # Update top level img dir in case split is used
             if split:
-                tl_imdir, tl_tardir = f'{tl_imdir}_split', f'{tl_tardir}_split'
+                tl_imdir, tl_tardir = f'{tl_imdir}_split{split_factor}', f'{tl_tardir}_split{split_factor}'
                 imdir_to = os.path.join(root_dir, tl_imdir, mode)
                 tardir_to = os.path.join(root_dir, tl_tardir, mode)
 
             # Save crops if necessary
             if split and os.path.isdir(self.image_dir) and os.path.isdir(self.target_dir) and not (
                     os.path.isdir(imdir_to) and os.path.isdir(tardir_to)):
-                split_images(from_path=self.image_dir, to_path=imdir_to, file_ext='*')
-                split_images(from_path=self.target_dir, to_path=tardir_to)
+                split_images(from_path=self.image_dir, to_path=imdir_to, file_ext='*', split_factor=split_factor)
+                split_images(from_path=self.target_dir, to_path=tardir_to, split_factor=split_factor)
+                if remove_empty:
+                    remove_where_mask_empty(impath=imdir_to, maskpath=tardir_to)
 
                 self.image_dir, self.target_dir = imdir_to, tardir_to
 
@@ -331,7 +335,7 @@ class VapourData(VisionDataset):
 
 
 def main():
-    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None, transforms=transforms_train_vap)
+    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None, transforms=transforms_train_vap, split_factor=4)
 
     print(train_data[0][1].shape)
 
