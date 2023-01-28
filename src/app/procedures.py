@@ -2,16 +2,17 @@ import glob
 
 import cv2
 
-from src.detection import load_image
+from src.detection import load_image, detect_droplets, Droplet, detect_streaks, draw_droplets, draw_streaks
 import torch
 import argparse
 from src.normalize import ImgLoader, normalize_images_batched
 import os
 from tqdm import tqdm
 from pathlib import Path
-import shutil
 from src.transforms import transform_eval
+from src.utils import create_dir
 from torchvision.utils import save_image
+import csv
 
 ID_TO_COLOR = {
     0: (0, 0, 0),
@@ -68,11 +69,8 @@ def mask_to_col(mask):
 
 
 def create_overlays(impath, maskpath, outpath):
-    images, masks = [], []
     img_files = sorted(glob.glob(os.path.join(impath, '*.*')))
     mask_files = sorted(glob.glob(os.path.join(maskpath, '*color.*')))
-    print(img_files)
-    print(mask_files)
     for img_file, mask_file in zip(img_files, mask_files):
         img_path = Path(img_file)
         img = cv2.imread(img_file)
@@ -88,14 +86,7 @@ def preprocess_imgs(impath, bsize=10):
 
 
 def process_imgs(model, impath, outpath, bsize=1, device='cpu'):
-    path = Path(outpath)
-    if path.exists():
-        delete = input('Folder already exists. Delete? [y/n]:')
-        if delete == 'y':
-            shutil.rmtree(path)
-        else:
-            exit()
-    path.mkdir(parents=True, exist_ok=False)
+    create_dir(outpath)
 
     loader = ImgLoader(impath, batch_size=int(bsize))
     loop = tqdm(enumerate(loader), total=len(loader))
@@ -115,8 +106,57 @@ def postprocess_masks():
     pass
 
 
+def measure_droplets(maskpath):
+    mask_files = sorted(glob.glob(os.path.join(maskpath, '*ids.*')))
+    print(mask_files)
+    droplets = {}
+    streaks = {}
+    for mask_file in mask_files:
+        path = Path(mask_file)
+        mask = load_image(mask_file)
+        dd = detect_droplets(mask)
+        #ds = detect_streaks(mask)
+        droplets[f"{path.stem[:-len('_ids')]}.png"] = dd
+        #streaks[f"{path.stem[:-len('_ids')]}.png"] = ds
+
+    return droplets, streaks
+
+
+def draw_detected_objects(impath, outpath, droplets: dict[str, list[Droplet]], streaks):
+    img_files = sorted(glob.glob(os.path.join(impath, '*.*')))
+    for filepath in img_files:
+        img = None
+        path = Path(filepath)
+        filename = path.name
+        if droplets is not None and filename in droplets.keys():
+            img = load_image(filepath, False)
+            img = draw_droplets(img, droplets[filename])
+        if streaks is not None and filename in streaks.keys():
+            if img is None:
+                img = load_image(filepath, False)
+            img = draw_streaks(img, streaks[filename])
+        if img is not None:
+            cv2.imwrite(os.path.join(outpath, f"{path.stem}_detected.png"), img)
+
+
+def droplets_to_csv(droplets: dict[str, list[Droplet]], outpath):
+    with open(outpath, 'w') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['filename', 'center_x', 'center_y', 'radius'])
+        for filename, droplet_in_file in droplets.items():
+            writer.writerow([filename])
+            for droplet in droplet_in_file:
+                writer.writerow(['', droplet.center[1], droplet.center[0], droplet.radius])
+
+
+def streaks_to_csv(streaks, outpath):
+    pass
+
+
 def main():
-    create_overlays(impath='../../data/vdetect_test', maskpath='../../data/vdetect_test/masks', outpath='../../data/vdetect_test/masks')
+    droplets, streaks = measure_droplets('../../data/vdetect_test/masks')
+    draw_detected_objects('../../data/vdetect_test', '../../data/vdetect_test/masks', droplets, None)
+    droplets_to_csv(droplets, '../../data/vdetect_test/masks/droplets.csv')
 
 
 if __name__ == '__main__':

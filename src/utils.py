@@ -14,7 +14,7 @@ import torchvision.transforms.functional as F
 from torchvision.utils import save_image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import fnmatch
+import shutil
 
 load_dotenv()
 
@@ -351,3 +351,14 @@ def remove_where_mask_empty(impath, maskpath, empty_label=0):
                     os.remove(img)
             if os.path.isfile(mf):
                 os.remove(mf)
+
+
+def create_dir(pathname):
+    path = Path(pathname)
+    if path.exists():
+        delete = input('Folder already exists. Delete? [y/n]:')
+        if delete == 'y':
+            shutil.rmtree(path)
+        else:
+            exit()
+    path.mkdir(parents=True, exist_ok=False)
