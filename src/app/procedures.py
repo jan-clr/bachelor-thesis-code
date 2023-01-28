@@ -1,6 +1,7 @@
 import glob
 
 import cv2
+import numpy as np
 
 from src.detection import load_image, detect_droplets, Droplet, detect_streaks, draw_droplets, draw_streaks
 import torch
@@ -108,7 +109,6 @@ def postprocess_masks():
 
 def measure_droplets(maskpath):
     mask_files = sorted(glob.glob(os.path.join(maskpath, '*ids.*')))
-    print(mask_files)
     droplets = {}
     streaks = {}
     for mask_file in mask_files:
@@ -122,7 +122,7 @@ def measure_droplets(maskpath):
     return droplets, streaks
 
 
-def draw_detected_objects(impath, outpath, droplets: dict[str, list[Droplet]], streaks):
+def draw_detected_objects(impath, outpath, droplets: dict[str, [Droplet]], streaks):
     img_files = sorted(glob.glob(os.path.join(impath, '*.*')))
     for filepath in img_files:
         img = None
@@ -139,14 +139,21 @@ def draw_detected_objects(impath, outpath, droplets: dict[str, list[Droplet]], s
             cv2.imwrite(os.path.join(outpath, f"{path.stem}_detected.png"), img)
 
 
-def droplets_to_csv(droplets: dict[str, list[Droplet]], outpath):
+def droplets_to_csv(droplets: dict[str, [Droplet]], outpath):
+    flat_rad = np.array([droplet.radius for dlist in droplets.values() for droplet in dlist])
+    rad_mean = np.mean(flat_rad)
+    rad_std = np.std(flat_rad)
     with open(outpath, 'w') as csv_file:
         writer = csv.writer(csv_file)
+        writer.writerow(['radius mean', rad_mean])
+        writer.writerow(['radius std', rad_std])
+        writer.writerow([])
         writer.writerow(['filename', 'center_x', 'center_y', 'radius'])
         for filename, droplet_in_file in droplets.items():
             writer.writerow([filename])
             for droplet in droplet_in_file:
                 writer.writerow(['', droplet.center[1], droplet.center[0], droplet.radius])
+    return rad_mean, rad_std, flat_rad
 
 
 def streaks_to_csv(streaks, outpath):
@@ -155,7 +162,7 @@ def streaks_to_csv(streaks, outpath):
 
 def main():
     droplets, streaks = measure_droplets('../../data/vdetect_test/masks')
-    draw_detected_objects('../../data/vdetect_test', '../../data/vdetect_test/masks', droplets, None)
+    #draw_detected_objects('../../data/vdetect_test', '../../data/vdetect_test/masks', droplets, None)
     droplets_to_csv(droplets, '../../data/vdetect_test/masks/droplets.csv')
 
 

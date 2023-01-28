@@ -58,7 +58,7 @@ class Droplet:
     radius: float | int
 
 
-def draw_droplets(img, droplets: List[Droplet]):
+def draw_droplets(img, droplets: [Droplet]):
     for droplet in droplets:
         cv2.circle(img, droplet.center[::-1], np.round(droplet.radius).astype(int), (0, 255, 0))
 
