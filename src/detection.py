@@ -3,8 +3,6 @@ import cv2
 import torch
 from skimage import measure
 from dataclasses import dataclass
-from typing import List
-import warnings
 
 
 def load_image(path, greyscale=True):

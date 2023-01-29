@@ -66,9 +66,10 @@ def normalize_images(images, files, remove_low_contrast=True, overwrite_artifact
     images = ((images - min_val) / (max_val - min_val) * 255.0).astype('uint8')
 
     if overwrite_artifacts:
-        max_val = np.max(mean_img)
-        min_val = np.min(mean_img)
-        mask = np.where(mean_img < min_val + (max_val - min_val) / 4)
+        mean_blurred = gaussian_filter(mean_img, sigma=3)
+        max_val = np.max(mean_blurred)
+        min_val = np.min(mean_blurred)
+        mask = np.where(mean_blurred < min_val + (max_val - min_val) / 4)
         for img in images:
             blurred = gaussian_filter(img, sigma=7)
             img[mask] = blurred[mask]
@@ -108,4 +109,4 @@ def normalize_images_batched(inpath, outpath, bsize):
 
     for batch, (images, files) in loop:
         normalized_images, files = normalize_images(images, files)
-        save_images(normalized_images, out_path=outpath, file_names=files)
+        #save_images(normalized_images, out_path=outpath, file_names=files)
