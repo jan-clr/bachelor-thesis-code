@@ -300,7 +300,7 @@ class ImgLoader:
         if not os.path.isdir(path):
             print('Path is not a directory.')
         self.path = path
-        self.image_files = sorted(os.listdir(path))
+        self.image_files = [file for file in sorted(os.listdir(path)) if os.path.isfile(os.path.join(path, file))]
         self.batch_size = batch_size
         self.batches = int(np.ceil(len(self.image_files) / float(batch_size)))
 

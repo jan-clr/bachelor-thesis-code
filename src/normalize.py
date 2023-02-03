@@ -109,4 +109,4 @@ def normalize_images_batched(inpath, outpath, bsize):
 
     for batch, (images, files) in loop:
         normalized_images, files = normalize_images(images, files)
-        #save_images(normalized_images, out_path=outpath, file_names=files)
+        save_images(normalized_images, out_path=outpath, file_names=files)

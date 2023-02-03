@@ -114,6 +114,7 @@ def measure_droplets(maskpath):
     for mask_file in mask_files:
         path = Path(mask_file)
         mask = load_image(mask_file)
+        print(mask_file)
         dd = detect_droplets(mask)
         #ds = detect_streaks(mask)
         droplets[f"{path.stem[:-len('_ids')]}.png"] = dd
