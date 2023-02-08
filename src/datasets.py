@@ -335,7 +335,7 @@ class VapourData(VisionDataset):
 
 
 def main():
-    train_data = VapourData("../data/vapourbase", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None, transforms=transforms_train_vap, split_factor=4)
+    train_data = VapourData("../data/vapourbase_0", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None, transforms=transforms_train_vap, split_factor=2)
 
     print(train_data[0][1].shape)
 
