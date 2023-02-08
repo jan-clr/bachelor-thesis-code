@@ -4,6 +4,8 @@ import os
 import numpy as np
 from pathlib import Path
 from glob import glob
+
+import torchmetrics
 from PIL import Image, ImageFile
 from torchvision.transforms import InterpolationMode
 import torchvision.transforms.functional as TF
@@ -362,3 +364,21 @@ def create_dir(pathname):
         else:
             exit()
     path.mkdir(parents=True, exist_ok=False)
+
+
+def val_fn(loader, model, loss_fn, device):
+    model.eval()
+    losses = []
+    iou = torchmetrics.JaccardIndex(task='multiclass', num_classes=len(loader.dataset.classes), ignore_index=255).to(device)
+    with torch.no_grad():
+        for batch, (X, y) in enumerate(loader):
+            X = X.float().to(device)
+            y = y.to(device)
+            pred = model(X)
+            loss = loss_fn(pred, y)
+            iou.update(pred, y)
+            losses.append(loss.item())
+
+    model.train()
+
+    return np.array(losses).sum() / len(losses), iou.compute()

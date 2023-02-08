@@ -4,11 +4,11 @@ from os import path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torchmetrics
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchmetrics
 from torch.utils.tensorboard import SummaryWriter  # to print to tensorboard
 from tqdm import tqdm
 import inquirer
@@ -17,11 +17,12 @@ from datetime import datetime
 import segmentation_models_pytorch as smp
 
 from src.masks import CowMaskGenerator
-from src.transforms import transforms_train_cs, transforms_train_vap, transforms_train_mt, transforms_train_mt_basic, transforms_val, \
+from src.transforms import transforms_train_cs, transforms_train_vap, transforms_train_mt_basic, \
+    transforms_val, \
     transforms_generator
 from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
-from src.model import CS_UNET, UnetResEncoder, DeepLabV3plus
-from src.utils import save_checkpoint, load_checkpoint, IoU, alert_training_end, generate_pseudo_labels
+from src.model import UnetResEncoder, DeepLabV3plus
+from src.utils import save_checkpoint, load_checkpoint, alert_training_end, generate_pseudo_labels, val_fn
 from src.losses import CrossEntropyConsLoss
 from src.lib.mean_teacher.data import TwoStreamBatchSampler
 from src.lib.mean_teacher.ramps import sigmoid_rampup
@@ -30,7 +31,7 @@ LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
 BATCH_SIZE_UNLABELED = 12
-NUM_EPOCHS = 600
+NUM_EPOCHS = 2
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 224
 IMAGE_WIDTH = 224
@@ -59,7 +60,7 @@ USE_ITERATIVE = False
 SKIP_SUPERVISED = False
 MODEL = 'dlv3p'
 ES_METRIC = 'iou'
-VAP_WEIGHTS = None #torch.Tensor([0.1, 1/0.06, 1/0.03]).to(DEVICE)
+VAP_WEIGHTS = None  # torch.Tensor([0.1, 1/0.06, 1/0.03]).to(DEVICE)
 OPTIMIZER = 'adam'
 SPLIT_FACTOR = 2
 
@@ -184,6 +185,7 @@ class Trainer(object):
         self.best_loss = None
         self.best_iou = None
         self.patience_counter = 0
+        self.train_iou = torchmetrics.JaccardIndex(task='multiclass', num_classes=len(self.train_loader.dataset.classes), ignore_index=255).to(DEVICE)
 
         # logging
         self.writer = SummaryWriter(log_dir=run_dir)
@@ -197,15 +199,11 @@ class Trainer(object):
                             epoch_global=self.epoch_global, filename=self.run_file)
 
             if self.teacher is not None:
-                losses, ious = val_fn(self.val_loader, self.teacher, self.loss_fn, self.epoch_global, self.writer,
-                                      writer_suffix='Teacher')
-                val_fn(self.val_loader, self.model, self.loss_fn, self.epoch_global, self.writer,
-                       writer_suffix='Student')
+                val_loss, val_iou = self.validate(self.teacher, writer_suffix='Teacher')
+                self.validate(self.model, writer_suffix='Student')
             else:
-                losses, ious = val_fn(self.val_loader, self.model, self.loss_fn, self.epoch_global, self.writer)
+                val_loss, val_iou = self.validate(self.model)
 
-            val_loss = np.array(losses).sum() / len(losses)
-            val_iou = np.array(ious).sum() / len(ious)
             if self.scheduler is not None:
                 self.scheduler.step(val_loss if ES_METRIC == 'loss' else 1.0 - val_iou)
             # early stopping
@@ -215,7 +213,8 @@ class Trainer(object):
                 save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer,
                                 scheduler=self.scheduler,
                                 epoch_global=self.epoch_global, filename=f"{self.run_dir}/model_best.pth.tar")
-            elif (ES_METRIC == 'loss' and self.best_loss - val_loss > MIN_DELTA) or (ES_METRIC == 'iou' and val_iou - self.best_iou > MIN_DELTA):
+            elif (ES_METRIC == 'loss' and self.best_loss - val_loss > MIN_DELTA) or (
+                    ES_METRIC == 'iou' and val_iou - self.best_iou > MIN_DELTA):
                 self.patience_counter = 0
                 self.best_loss = val_loss
                 self.best_iou = val_iou
@@ -236,16 +235,17 @@ class Trainer(object):
         print("\nTraining Complete.")
         self.writer.add_hparams(
             {'lr': LEARNING_RATE, 'bsize': BATCH_SIZE, "lrs_factor": LRS_FACTOR, "lr_patience": LR_PATIENCE},
-            {'hparams/loss': self.best_loss, 'hparams/iou': self.best_iou, 'hparams/dropout': DROPOUT or 0}, run_name='.')
+            {'hparams/loss': self.best_loss, 'hparams/iou': self.best_iou, 'hparams/dropout': DROPOUT or 0},
+            run_name='.')
 
         alert_training_end(self.run_name, self.epoch_global, stopped_early=(self.patience_counter >= ES_PATIENCE),
                            final_metrics={'best_loss': self.best_loss, 'best_iou': self.best_iou})
 
     def train_epoch(self):
+        self.train_iou.reset()
         losses = []
         class_losses = []
         consistency_losses = []
-        ious = []
         loop = tqdm(enumerate(self.train_loader), total=len(self.train_loader), leave=False)
         skip_teacher = self.epoch_global <= MT_DELAY
 
@@ -291,57 +291,38 @@ class Trainer(object):
             if MT_ENABLED and self.teacher is not None:
                 update_teacher_params(self.model, self.teacher, EMA_DECAY, self.step)
 
-            jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred_stu_labeled, 1), 1),
-                                      ground_truth=target,
-                                      n_classes=len(self.train_loader.dataset.classes))
+            jaccard_idx = self.train_iou(pred_stu_labeled, target)
 
             losses.append(float(loss.item()))
             class_losses.append(float(class_loss.item()))
             if MT_ENABLED and self.teacher is not None and not skip_teacher:
                 consistency_losses.append(float(consistency_loss.item()))
-            ious.append(jaccard_idx)
 
             loop.set_postfix(loss=loss, jcc_idx=jaccard_idx)
             self.step += 1
 
         if self.writer is not None:
             self.writer.add_scalar('Training/Loss', np.array(losses).sum() / len(losses), global_step=self.epoch_global)
-            self.writer.add_scalar('Training/Jaccard Index', np.array(ious).sum() / len(ious),
+            self.writer.add_scalar('Training/Jaccard Index', self.train_iou.compute(),
                                    global_step=self.epoch_global)
             if MT_ENABLED and self.teacher is not None and not skip_teacher:
-                self.writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(ious),
+                self.writer.add_scalar('Training/Consistency Loss', np.array(consistency_losses).sum() / len(consistency_losses),
                                        global_step=self.epoch_global)
                 self.writer.add_scalar('Training/Consistency Weight', consistency_weight, global_step=self.epoch_global)
-            self.writer.add_scalar('Training/Class Loss', np.array(class_losses).sum() / len(ious),
+            self.writer.add_scalar('Training/Class Loss', np.array(class_losses).sum() / len(class_losses),
                                    global_step=self.epoch_global)
             self.writer.add_scalar('Training/Learning Rate', self.optimizer.param_groups[0]['lr'],
                                    global_step=self.epoch_global)
 
+    def validate(self, model, writer_suffix=''):
+        val_loss, val_iou = val_fn(self.val_loader, model, self.loss_fn, DEVICE)
+        if self.writer is not None:
+            self.writer.add_scalar(f'Validation/Loss{" " + writer_suffix if writer_suffix != "" else ""}',
+                                   val_loss, global_step=self.epoch_global)
+            self.writer.add_scalar(f'Validation/Jaccard Index{" " + writer_suffix if writer_suffix != "" else ""}',
+                                   val_iou, global_step=self.epoch_global)
 
-def val_fn(loader, model, loss_fn, epoch=0, writer=None, writer_suffix=''):
-    model.eval()
-    losses = []
-    ious = []
-    with torch.no_grad():
-        for batch, (X, y) in enumerate(loader):
-            X = X.float().to(DEVICE)
-            y = y.to(DEVICE)
-            pred = model(X)
-            loss = loss_fn(pred, y)
-            jaccard_idx, scores = IoU(pred=torch.argmax(nn.functional.softmax(pred.float(), 1), 1), ground_truth=y,
-                                      n_classes=len(loader.dataset.classes))
-            losses.append(loss.item())
-            ious.append(jaccard_idx)
-
-    if writer is not None:
-        writer.add_scalar(f'Validation/Loss{" " + writer_suffix if writer_suffix != "" else ""}',
-                          np.array(losses).sum() / len(losses), global_step=epoch)
-        writer.add_scalar(f'Validation/Jaccard Index{" " + writer_suffix if writer_suffix != "" else ""}',
-                          np.array(ious).sum() / len(ious), global_step=epoch)
-
-    model.train()
-
-    return losses, ious
+        return val_loss, val_iou
 
 
 def get_cs_loaders(data_dir, lbl_range, unlbl_range):
@@ -376,7 +357,8 @@ def get_cs_loaders_mt(data_dir, lbl_range, unlbl_range):
 
 
 def get_vap_loaders(data_dir, lbl_range, unlbl_range):
-    train_data = VapourData(data_dir, transforms=transforms_train_vap, use_labeled=lbl_range, use_unlabeled=unlbl_range, split_factor=SPLIT_FACTOR)
+    train_data = VapourData(data_dir, transforms=transforms_train_vap, use_labeled=lbl_range, use_unlabeled=unlbl_range,
+                            split_factor=SPLIT_FACTOR)
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val, split_factor=SPLIT_FACTOR)
 
     train_dataloader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, pin_memory=PIN_MEMORY,
@@ -389,7 +371,8 @@ def get_vap_loaders(data_dir, lbl_range, unlbl_range):
 
 
 def get_vap_loaders_mt(data_dir, lbl_range, unlbl_range):
-    train_data = VapourData(data_dir, transforms=transforms_train_mt_basic, use_labeled=lbl_range, use_unlabeled=unlbl_range, split_factor=SPLIT_FACTOR)
+    train_data = VapourData(data_dir, transforms=transforms_train_mt_basic, use_labeled=lbl_range,
+                            use_unlabeled=unlbl_range, split_factor=SPLIT_FACTOR)
     val_data = VapourData(data_dir, mode='val', transforms=transforms_val, split_factor=SPLIT_FACTOR)
 
     train_dataloader = DataLoader(train_data, pin_memory=PIN_MEMORY,
@@ -418,7 +401,8 @@ def get_current_consistency_weight(epoch):
 def create_models(model_name, num_classes, encoder='resnet101', in_channels=3):
     print(f"Using encoder '{encoder}'")
     if model_name == 'unet':
-        model = UnetResEncoder(in_ch=in_channels, out_ch=num_classes, encoder_name=encoder or 'resnet34d', dropout_p=DROPOUT).to(
+        model = UnetResEncoder(in_ch=in_channels, out_ch=num_classes, encoder_name=encoder or 'resnet34d',
+                               dropout_p=DROPOUT).to(
             DEVICE)
         teacher = UnetResEncoder(in_ch=in_channels, out_ch=num_classes, encoder_name=encoder or 'resnet34d',
                                  dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
@@ -581,10 +565,13 @@ def main():
 
     model, teacher = create_models(MODEL, out_ch, args.encoder or 'resnet101')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(ignore_index=255, weight=VAP_WEIGHTS)
-    consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(weight=VAP_WEIGHTS)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=255) if DATASET_NAME == 'Cityscapes' else nn.CrossEntropyLoss(
+        ignore_index=255, weight=VAP_WEIGHTS)
+    consistency_loss_fn = CrossEntropyConsLoss() if DATASET_NAME == 'Cityscapes' else CrossEntropyConsLoss(
+        weight=VAP_WEIGHTS)
 
-    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True, weight_decay=1e-4) if OPTIMIZER == 'sgd' else optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, nesterov=True,
+                          weight_decay=1e-4) if OPTIMIZER == 'sgd' else optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=LR_PATIENCE, threshold=MIN_DELTA,
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
@@ -630,7 +617,8 @@ def main():
     else:
         # Supervised learning cycle
         if not SKIP_SUPERVISED:
-            train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train_cs, use_labeled=label_rng)
+            train_set = CustomCityscapesDataset(root_dir=data_dir, transforms=transforms_train_cs,
+                                                use_labeled=label_rng)
             train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY,
                                       worker_init_fn=seed_worker, generator=GENERATOR, shuffle=True,
                                       collate_fn=collate_split_batches)
