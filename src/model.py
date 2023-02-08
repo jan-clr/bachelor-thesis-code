@@ -90,7 +90,7 @@ class UnetResEncoder(nn.Module):
     UNET Implementation using pretrained ResNet as Encoder
     """
 
-    def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34', freeze_encoder=False, dropout_p=None):
+    def __init__(self, in_ch=3, out_ch=2, encoder_name='resnet34', freeze_encoder=False, dropout_p=None, out_indices=None):
         super(UnetResEncoder, self).__init__()
 
         if dropout_p is not None:
@@ -292,7 +292,7 @@ def test_deeplabv3p():
 
 def test():
     x = torch.randn((4, 3, 512, 256))
-    model = UnetResEncoder()
+    model = UnetResEncoder(out_indices=(0, 1, 2, 3))
     model.eval()
     out = model(x)
     for o in out:
@@ -300,7 +300,7 @@ def test():
 
 
 def main():
-    test_deeplabv3p()
+    test()
 
 
 if __name__ == '__main__':

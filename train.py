@@ -63,6 +63,7 @@ ES_METRIC = 'iou'
 VAP_WEIGHTS = None  # torch.Tensor([0.1, 1/0.06, 1/0.03]).to(DEVICE)
 OPTIMIZER = 'adam'
 SPLIT_FACTOR = 2
+OUT_INDICES = None
 
 
 def collate_split_batches(batch):
@@ -402,10 +403,10 @@ def create_models(model_name, num_classes, encoder='resnet101', in_channels=3):
     print(f"Using encoder '{encoder}'")
     if model_name == 'unet':
         model = UnetResEncoder(in_ch=in_channels, out_ch=num_classes, encoder_name=encoder or 'resnet34d',
-                               dropout_p=DROPOUT).to(
+                               dropout_p=DROPOUT, out_indices=OUT_INDICES).to(
             DEVICE)
         teacher = UnetResEncoder(in_ch=in_channels, out_ch=num_classes, encoder_name=encoder or 'resnet34d',
-                                 dropout_p=DROPOUT_TEACHER).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
+                                 dropout_p=DROPOUT_TEACHER, out_indices=OUT_INDICES).to(DEVICE) if MT_ENABLED or USE_ITERATIVE else None
     elif model_name == 'dlv3p':
         model = DeepLabV3plus(in_ch=in_channels, num_classes=num_classes, dropout_p=DROPOUT).to(DEVICE)
         teacher = DeepLabV3plus(in_ch=in_channels, num_classes=num_classes, dropout_p=DROPOUT_TEACHER).to(
@@ -457,6 +458,7 @@ def main():
     parser.add_argument("--skip", help="Skip supervised training in iterative approach when loading a model.",
                         action=argparse.BooleanOptionalAction)
     parser.add_argument('--split', help='Set the factor for splitting the training images')
+    parser.add_argument('--oidx', help='Set the out indices for the feature extractor.', nargs='*')
 
     args = parser.parse_args()
 
@@ -478,6 +480,7 @@ def main():
     global DATASET_NAME
     global OPTIMIZER
     global SPLIT_FACTOR
+    global OUT_INDICES
     label_rng = None
     unlabel_rng = None
 
@@ -521,6 +524,8 @@ def main():
         DATASET_NAME = args.ds
     if args.split is not None:
         SPLIT_FACTOR = int(args.split)
+    if args.oidx is not None:
+        OUT_INDICES = [int(idx) for idx in args.oidx]
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
