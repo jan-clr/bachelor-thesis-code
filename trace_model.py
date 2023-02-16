@@ -2,7 +2,7 @@ import torch
 from torch import jit
 import argparse
 from src.model import UnetResEncoder
-from utils import load_checkpoint
+from src.utils import load_checkpoint
 import os
 
 SUPPORTED_ARCH = ['unet']

@@ -77,19 +77,22 @@ def droplet_has_inside(droplet_coords, image, check_for=2):
     if len(droplet_coords) < 5:
         return False
     # compute alphashape of the droplet label
-    ashape = alphashape.alphashape(droplet_coords, alpha=1)
-    if ashape.geom_type != 'Polygon':
+    try:
+        ashape = alphashape.alphashape(droplet_coords, alpha=1)
+        if ashape.geom_type != 'Polygon':
+            return False
+        min_x, min_y, max_x, max_y = [int(x) for x in ashape.bounds]
+        # Polygon is out of bounds
+        if min_x < 0 or min_y < 0 or max_x >= image.shape[0] or max_y >= image.shape[1]:
+            print("Polygon out of Bounds")
+            return False
+        inner_cords = np.array(get_points_in_poly(polygon=ashape))
+        if len(inner_cords) <= 0:
+            return False
+        inside_pixels = np.sum(image[inner_cords.T[0], inner_cords.T[1]] == check_for)
+        return inside_pixels > 0
+    except:
         return False
-    min_x, min_y, max_x, max_y = [int(x) for x in ashape.bounds]
-    # Polygon is out of bounds
-    if min_x < 0 or min_y < 0 or max_x >= image.shape[0] or max_y >= image.shape[1]:
-        print("Polygon out of Bounds")
-        return False
-    inner_cords = np.array(get_points_in_poly(polygon=ashape))
-    if len(inner_cords) <= 0:
-        return False
-    inside_pixels = np.sum(image[inner_cords.T[0], inner_cords.T[1]] == check_for)
-    return inside_pixels > 0
 
 
 def get_points_in_poly(polygon: Polygon):

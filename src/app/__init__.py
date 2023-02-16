@@ -25,13 +25,16 @@ def main():
     model = prepare_model(model_path, DEVICE)
     working_dir = args.impath
 
-    if args.norm:
-        working_dir = preprocess_imgs(working_dir)
+    if args.labelpath is not None:
+        mask_dir = args.labelpath
+    else:
+        if args.norm:
+            working_dir = preprocess_imgs(working_dir)
 
-    mask_dir = os.path.join(args.impath, 'masks')
-    process_imgs(model, working_dir, mask_dir, bsize=1, device=DEVICE)
+        mask_dir = os.path.join(args.impath, 'masks')
+        process_imgs(model, working_dir, mask_dir, bsize=1, device=DEVICE)
 
-    create_overlays(working_dir, mask_dir, mask_dir)
+        create_overlays(working_dir, mask_dir, mask_dir)
 
     # postprocess_masks()
 

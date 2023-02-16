@@ -36,6 +36,7 @@ def parse_arguments():
                                        '\nThis may use drive space equivalent to the size of your data.',
                         action='store_true')
     parser.add_argument('--device', help="Set device manually.")
+    parser.add_argument('--labelpath', help='Start from existing labels.')
     return parser.parse_args()
 
 
