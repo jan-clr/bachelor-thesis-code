@@ -1,3 +1,5 @@
+from typing import Any
+
 import cv2
 import torch
 import os
@@ -17,6 +19,7 @@ from torchvision.utils import save_image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import shutil
+from src.detection import detect_droplets
 
 load_dotenv()
 
@@ -39,12 +42,13 @@ def show(imgs):
         axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
 
-def save_checkpoint(model, teacher_model=None, optimizer=None, scheduler=None, step=0, epoch_global=0, filename="my_checkpoint.pth.tar") -> None:# save model
+def save_checkpoint(model, teacher_model=None, optimizer=None, scheduler=None, step=0, epoch_global=0,
+                    filename="my_checkpoint.pth.tar") -> None:  # save model
     checkpoint = {
-	    "state_dict": model.state_dict(),
+        "state_dict": model.state_dict(),
         "steps": step,
         "epochs": epoch_global
-                  }
+    }
     if optimizer is not None:
         checkpoint["optimizer"] = optimizer.state_dict()
     if scheduler is not None:
@@ -56,7 +60,8 @@ def save_checkpoint(model, teacher_model=None, optimizer=None, scheduler=None, s
     torch.save(checkpoint, filename)
 
 
-def load_checkpoint(checkpoint_file: str, model, teacher_model=None, optimizer=None, scheduler=None, strict=True, except_layers=[]) -> (int, int):
+def load_checkpoint(checkpoint_file: str, model, teacher_model=None, optimizer=None, scheduler=None, strict=True,
+                    except_layers=[]) -> (int, int):
     """
     Loads the models (and optimizers) parameters from a checkpoint file.
 
@@ -83,7 +88,7 @@ def load_checkpoint(checkpoint_file: str, model, teacher_model=None, optimizer=N
     return checkpoint['steps'], checkpoint["epochs"]
 
 
-def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes:int, ignore_ids: [int]=[]) -> (float, any) :
+def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes: int, ignore_ids: [int] = []) -> (float, any):
     """
     Compute the Jaccard Index for a prediciton given a ground truth.
 
@@ -97,7 +102,8 @@ def IoU(pred: torch.Tensor, ground_truth: torch.Tensor, n_classes:int, ignore_id
     """
 
     if pred.shape != ground_truth.shape:
-        raise ValueError(f"Prediction and ground truth must have same shape, but shape {pred.shape} and {ground_truth.shape} were given.")
+        raise ValueError(
+            f"Prediction and ground truth must have same shape, but shape {pred.shape} and {ground_truth.shape} were given.")
 
     ious = []
     pred = pred.view(-1)
@@ -167,8 +173,8 @@ def resize_images(from_path, to_path, size, anti_aliasing=True):
     :return:
     """
     print("Resizing ----------------------")
-    operations = [lambda img :TF.resize(img, size,
-              interpolation=InterpolationMode.BILINEAR if anti_aliasing else InterpolationMode.NEAREST)]
+    operations = [lambda img: TF.resize(img, size,
+                                        interpolation=InterpolationMode.BILINEAR if anti_aliasing else InterpolationMode.NEAREST)]
     perform_on_all_imgs(from_path, to_path, operations)
     print('')
 
@@ -210,9 +216,11 @@ def split_image(image, split_factor):
     splits = []
     for i in range(split_factor):
         for j in range(split_factor):
-            splits.append(image[y_points[i]: y_points[i] + h // split_factor, x_points[j]: x_points[j] + w // split_factor])
+            splits.append(
+                image[y_points[i]: y_points[i] + h // split_factor, x_points[j]: x_points[j] + w // split_factor])
 
     return splits
+
 
 def generate_pseudo_labels(model, loader, output_dir, device):
     path = Path(output_dir)
@@ -226,7 +234,7 @@ def generate_pseudo_labels(model, loader, output_dir, device):
         image = image.float().to(device)
         pred = model(image)
         pred = torch.squeeze(pred)
-        label = torch.argmax(pred, dim=len(pred.size()) - 3) # size as 4 entries if images are batched
+        label = torch.argmax(pred, dim=len(pred.size()) - 3)  # size as 4 entries if images are batched
         if len(label.size()) == 3:
             # / 255.0 because torch io expects float tensors [0.0, 1.0]
             # replace with functionality that natively supports int
@@ -259,12 +267,12 @@ def send_slack_msg(content, text="Fallback Alert"):
 
 def alert_training_end(run_name, epoch=0, final_metrics=None, stopped_early=False):
     blocks = [{
-            "type": "header",
-            "text": {
-                "type": "plain_text",
-                "text": "Training Complete"
-            }
-        },
+        "type": "header",
+        "text": {
+            "type": "plain_text",
+            "text": "Training Complete"
+        }
+    },
         {
             "type": "section",
             "text": {
@@ -272,7 +280,7 @@ def alert_training_end(run_name, epoch=0, final_metrics=None, stopped_early=Fals
                 "text": f"The training for the run *{run_name}* has been completed after *{epoch} epochs*, because {'improvement has stopped' if stopped_early else 'the maximum number of epochs has been reached'}."
             }
         },
-        ]
+    ]
     if final_metrics is not None:
         blocks.append({
             "type": "divider"
@@ -286,14 +294,14 @@ def alert_training_end(run_name, epoch=0, final_metrics=None, stopped_early=Fals
         })
 
     blocks.append({
-            "type": "context",
-            "elements": [
-                {
-                    "type": "plain_text",
-                    "text": f"Host: {socket.gethostname()}"
-                }
-            ]
-        })
+        "type": "context",
+        "elements": [
+            {
+                "type": "plain_text",
+                "text": f"Host: {socket.gethostname()}"
+            }
+        ]
+    })
     send_slack_msg(blocks, "Training Complete")
 
 
@@ -366,19 +374,70 @@ def create_dir(pathname):
     path.mkdir(parents=True, exist_ok=False)
 
 
-def val_fn(loader, model, loss_fn, device):
+def val_fn(loader, model, loss_fn, device, calc_droplet_acc=False):
     model.eval()
     losses = []
-    iou = torchmetrics.JaccardIndex(task='multiclass', num_classes=len(loader.dataset.classes), ignore_index=255).to(device)
+    iou = torchmetrics.JaccardIndex(task='multiclass', num_classes=len(loader.dataset.classes), ignore_index=255).to(
+        device)
+    if calc_droplet_acc:
+        dacc = DropletAccuracy().to(device)
     with torch.no_grad():
-        for batch, (X, y) in enumerate(loader):
+        loop = tqdm(enumerate(loader), total=len(loader), leave=False)
+        for batch, (X, y) in loop:
             X = X.float().to(device)
             y = y.to(device)
             pred = model(X)
             loss = loss_fn(pred, y)
             iou.update(pred, y)
+            if calc_droplet_acc:
+                dacc.update(pred, y)
             losses.append(loss.item())
 
     model.train()
 
-    return np.array(losses).sum() / len(losses), iou.compute()
+    return (np.array(losses).sum() / len(losses), iou.compute(), *dacc.compute()) if calc_droplet_acc else (np.array(losses).sum() / len(losses), iou.compute())
+
+
+class DropletAccuracy(torchmetrics.Metric):
+    """
+    Metric for the accuracy of the droplet detection. It computes the precision and recall of the droplet detection,
+    as well as the relative error of the mean radius of the droplets if using only correctly predicted droplets and using all predicted droplets.
+    """
+    def __init__(self):
+        super().__init__()
+        self.add_state("true_droplets", default=[], dist_reduce_fx="cat")
+        self.add_state("pred_droplets", default=[], dist_reduce_fx="cat")
+        self.add_state("correct_droplets", default=[], dist_reduce_fx="cat")
+
+    def compute(self) -> (float, float, float):
+        """
+        Computes and returns the metrics as float values.
+        :return: precision, recall, relative error of the mean radius (correct), relative error of the mean radius (all)
+        """
+        correct = len(self.correct_droplets)
+        true = len(self.true_droplets)
+        predicted = len(self.pred_droplets)
+        rads_true = np.array([droplet.radius for droplet in self.true_droplets])
+        rads_correct = np.array([droplet.radius for droplet in self.correct_droplets])
+        rads_pred = np.array([droplet.radius for droplet in self.pred_droplets])
+        print(correct, true, predicted)
+        return float(correct) / true, float(correct) / predicted, (np.mean(rads_true) - np.mean(rads_correct)) / np.mean(rads_true), (np.mean(rads_true) - np.mean(rads_pred)) / np.mean(rads_true)
+
+    def update(self, pred: Any, target: Any) -> None:
+        pred = torch.argmax(pred, dim=1)
+        for target_mask, pred_mask in zip(target, pred):
+            '''
+            tar_img = (target_mask.cpu().numpy() * 255 / 2.0).astype(np.uint8)
+            pred_img = (pred_mask.cpu().numpy() * 255 / 2.0).astype(np.uint8)
+            print(np.unique(tar_img), np.unique(pred_img))
+            cv2.imshow('target', tar_img)
+            cv2.imshow('pred', target_mask)
+            cv2.waitKey()
+            cv2.destroyAllWindows()
+            '''
+            self.true_droplets += detect_droplets(target_mask.cpu().numpy())
+            self.pred_droplets += detect_droplets(pred_mask.cpu().numpy())
+            for droplet in self.pred_droplets:
+                label_at_center = target_mask[droplet.center[0], droplet.center[1]]
+                if label_at_center == 1 or label_at_center == 2:
+                    self.correct_droplets.append(droplet)
