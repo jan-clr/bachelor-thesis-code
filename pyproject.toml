@@ -19,7 +19,21 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    'torch'
+    'torch',
+    'torchvision',
+    'numpy',
+    'Pillow',
+    'matplotlib',
+    'scipy',
+    'scikit-image',
+    'tqdm',
+    'albumentations',
+    'opencv-python',
+    'alphashape',
+    'shapely',
+    'python-dotenv',
+    'inquirer',
+    'torchmetrics'
 ]
 version = '0.1'
 
