@@ -54,37 +54,48 @@ def normalize_data(path) -> str:
     return norm_dir
 
 
-def normalize_images(images, files, remove_low_contrast=True, overwrite_artifacts=True):
+def normalize_images(images, files, remove_low_contrast=True, overwrite_artifacts=False, contrast_method='michelson'):
     images = images.astype('int32')
     mean_img = np.mean(images, axis=0)
     mean_img = mean_img.astype('uint8')
     mean_val = np.mean(images)
 
-    images = (images - mean_img + mean_val)
+    if overwrite_artifacts:
+        mean_blurred_fine = gaussian_filter(mean_img, sigma=0.5)
+        mean_blurred_coarse = gaussian_filter(mean_img, sigma=30)
+        max_val = np.max(mean_blurred_fine)
+        min_val = np.min(mean_blurred_fine)
+        cv2.imshow('Blurred Mean Fine', mean_blurred_fine)
+        cv2.imshow('Blurred Mean Coarse', mean_blurred_coarse)
+        cv2.imshow('mask', np.where(mean_blurred_fine < mean_blurred_coarse - (max_val - min_val) / 10, 0, 255).astype('uint8'))
+        cv2.waitKey()
+        cv2.destroyAllWindows()
+        for img in images:
+            blurred = gaussian_filter(img, sigma=7)
+            img[:, :] = np.where(mean_blurred_fine < mean_blurred_coarse - (max_val - min_val) / 10, blurred, img)
+    else:
+        images = (images - mean_img + mean_val)
+
     min_val = np.min(images)
     max_val = np.max(images)
     images = ((images - min_val) / (max_val - min_val) * 255.0).astype('uint8')
-
-    if overwrite_artifacts:
-        mean_blurred = gaussian_filter(mean_img, sigma=3)
-        max_val = np.max(mean_blurred)
-        min_val = np.min(mean_blurred)
-        mask = np.where(mean_blurred < min_val + (max_val - min_val) / 4)
-        for img in images:
-            blurred = gaussian_filter(img, sigma=7)
-            img[mask] = blurred[mask]
 
     final_images, final_files = [], []
 
     if remove_low_contrast:
         for i, img in enumerate(images):
-            Y = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)[:, :, 0]
-            # compute min and max of Y
-            min_Y = np.min(Y)
-            max_Y = np.max(Y)
+            if contrast_method == 'michelson':
+                Y = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)[:, :, 0]
+                # compute min and max of Y
+                min_Y = np.min(Y)
+                max_Y = np.max(Y)
 
-            # compute contrast
-            contrast = (max_Y - min_Y) / (int(max_Y) + int(min_Y))
+                # compute michelson contrast
+                contrast = (max_Y - min_Y) / (int(max_Y) + int(min_Y))
+            else:
+                norm_img = img / 255.0
+                contrast = np.std(norm_img)
+
             print(contrast, files[i])
             if contrast > CONTRAST_THRESHOLD:
                 final_images.append(img)

@@ -255,7 +255,7 @@ def get_lowest_unused_int(l):
 
 def send_slack_msg(content, text="Fallback Alert"):
     if SLACK_WEBHOOK_URL is None:
-        print("No webhook url specified. Make sure .env is setup correctly.")
+        print("No slack webhook url specified. If you want to receive training alerts, make sure .env is setup correctly.")
         return
 
     webhook = WebhookClient(SLACK_WEBHOOK_URL)

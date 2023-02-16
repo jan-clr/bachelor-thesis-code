@@ -4,8 +4,6 @@ import torch
 from skimage import measure
 from dataclasses import dataclass
 import alphashape
-from descartes import PolygonPatch
-import matplotlib.pyplot as plt
 from shapely import Point
 from shapely import Polygon
 from itertools import product
