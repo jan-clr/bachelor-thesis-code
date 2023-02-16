@@ -9,7 +9,7 @@ SUPPORTED_ARCH = ['unet']
 
 
 def main():
-    parser = argparse.ArgumentParser("Pickle a model so it can be used in the application later without referencing "
+    parser = argparse.ArgumentParser("Trace a model so it can be used in the application later without referencing "
                                      "the architecture")
 
     parser.add_argument('--arch',

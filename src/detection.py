@@ -91,7 +91,8 @@ def droplet_has_inside(droplet_coords, image, check_for=2):
             return False
         inside_pixels = np.sum(image[inner_cords.T[0], inner_cords.T[1]] == check_for)
         return inside_pixels > 0
-    except:
+    except Exception as err:
+        print(err)
         return False
 
 
