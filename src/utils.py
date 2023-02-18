@@ -306,13 +306,14 @@ def alert_training_end(run_name, epoch=0, final_metrics=None, stopped_early=Fals
 
 
 class ImgLoader:
-    def __init__(self, path, batch_size=1):
+    def __init__(self, path, batch_size=1, grayscale=False):
         if not os.path.isdir(path):
             print('Path is not a directory.')
         self.path = path
         self.image_files = [file for file in sorted(os.listdir(path)) if os.path.isfile(os.path.join(path, file))]
         self.batch_size = batch_size
         self.batches = int(np.ceil(len(self.image_files) / float(batch_size)))
+        self.grayscale = grayscale
 
     def __len__(self):
         return self.batches
@@ -330,7 +331,7 @@ class ImgLoader:
             raise StopIteration
         images, read_files = [], []
         for file in batch_files:
-            cv_img = cv2.imread(os.path.join(self.path, file))
+            cv_img = cv2.imread(os.path.join(self.path, file), cv2.IMREAD_GRAYSCALE if self.grayscale else None)
             if cv_img is not None:
                 images.append(cv_img)
                 read_files.append(file)
@@ -343,7 +344,7 @@ class ImgLoader:
 def save_images(images, out_path, file_names):
     assert len(images) == len(file_names)
     for i, img in enumerate(images):
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         cv2.imwrite(os.path.join(out_path, file_names[i]), img)
 
 

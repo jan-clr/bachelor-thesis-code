@@ -7,7 +7,7 @@ from pathlib import Path
 from src.utils import save_images, ImgLoader
 from tqdm import tqdm
 
-CONTRAST_THRESHOLD = 0.6
+CONTRAST_THRESHOLD = 0.3
 
 
 def normalize_data(path) -> str:
@@ -54,13 +54,15 @@ def normalize_data(path) -> str:
     return norm_dir
 
 
-def normalize_images(images, files, remove_low_contrast=True, overwrite_artifacts=False, contrast_method='michelson'):
-    images = images.astype('int32')
-    mean_img = np.mean(images, axis=0)
-    mean_img = mean_img.astype('uint8')
+def normalize_images(images, files, remove_low_contrast=True, overwrite_artifacts=False, contrast_method='michelson', overwrite_method='gauss'):
+    mean_img = np.mean(images, axis=0).astype('uint8')
     mean_val = np.mean(images)
 
     if overwrite_artifacts:
+        mean_blurred_fine = gaussian_filter(mean_img, sigma=1.2)
+        mask = cv2.adaptiveThreshold(mean_blurred_fine, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+        cv2.dilate(mask, np.ones((3, 3), np.uint8), mask, iterations=1)
+        '''
         mean_blurred_fine = gaussian_filter(mean_img, sigma=0.5)
         mean_blurred_coarse = gaussian_filter(mean_img, sigma=30)
         max_val = np.max(mean_blurred_fine)
@@ -68,13 +70,18 @@ def normalize_images(images, files, remove_low_contrast=True, overwrite_artifact
         cv2.imshow('Blurred Mean Fine', mean_blurred_fine)
         cv2.imshow('Blurred Mean Coarse', mean_blurred_coarse)
         cv2.imshow('mask', np.where(mean_blurred_fine < mean_blurred_coarse - (max_val - min_val) / 10, 0, 255).astype('uint8'))
-        cv2.waitKey()
-        cv2.destroyAllWindows()
+        '''
         for img in images:
-            blurred = gaussian_filter(img, sigma=7)
-            img[:, :] = np.where(mean_blurred_fine < mean_blurred_coarse - (max_val - min_val) / 10, blurred, img)
+            if overwrite_method == 'inpaint':
+                cv2.inpaint(img, mask, 3, cv2.INPAINT_NS, dst=img)
+            else:
+                img_blurred = gaussian_filter(img, sigma=7)
+                img[mask > 0] = img_blurred[mask > 0]
     else:
-        images = (images - mean_img + mean_val)
+        images = images.astype('int32')
+        images = images - mean_img
+        for i, img in enumerate(images):
+            images[i] = img + np.mean(img)
 
     min_val = np.min(images)
     max_val = np.max(images)
@@ -84,16 +91,16 @@ def normalize_images(images, files, remove_low_contrast=True, overwrite_artifact
 
     if remove_low_contrast:
         for i, img in enumerate(images):
+            img_blurred = gaussian_filter(img, sigma=1.5)
             if contrast_method == 'michelson':
-                Y = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)[:, :, 0]
                 # compute min and max of Y
-                min_Y = np.min(Y)
-                max_Y = np.max(Y)
+                min_Y = np.min(img_blurred)
+                max_Y = np.max(img_blurred)
 
                 # compute michelson contrast
                 contrast = (max_Y - min_Y) / (int(max_Y) + int(min_Y))
             else:
-                norm_img = img / 255.0
+                norm_img = img_blurred / 255.0
                 contrast = np.std(norm_img)
 
             print(contrast, files[i])
@@ -115,7 +122,7 @@ def normalize_images_batched(inpath, outpath, bsize):
             shutil.rmtree(path)
     path.mkdir(parents=True, exist_ok=False)
 
-    loader = ImgLoader(inpath, batch_size=int(bsize))
+    loader = ImgLoader(inpath, batch_size=int(bsize), grayscale=True)
     loop = tqdm(enumerate(loader), total=len(loader))
 
     for batch, (images, files) in loop:
