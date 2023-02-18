@@ -64,6 +64,7 @@ VAP_WEIGHTS = None  # torch.Tensor([0.1, 1/0.06, 1/0.03]).to(DEVICE)
 OPTIMIZER = 'adam'
 SPLIT_FACTOR = 2
 OUT_INDICES = None
+ROOT_RUN_DIR = './runs'
 
 
 def collate_split_batches(batch):
@@ -177,7 +178,7 @@ class Trainer(object):
         self.loss_fn = loss_fn
         self.run_name = run_name
         self.run_dir = run_dir
-        self.run_file = f"{run_dir}/model.pth.tar"
+        self.run_file = os.path.join(run_dir, "model.pth.tar")
         self.teacher = teacher
         self.consistency_fn = consistency_fn
         self.step = step
@@ -213,7 +214,7 @@ class Trainer(object):
                 self.best_iou = val_iou
                 save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer,
                                 scheduler=self.scheduler,
-                                epoch_global=self.epoch_global, filename=f"{self.run_dir}/model_best.pth.tar")
+                                epoch_global=self.epoch_global, filename=os.path.join(self.run_dir, "model_best.pth.tar"))
             elif (ES_METRIC == 'loss' and self.best_loss - val_loss > MIN_DELTA) or (
                     ES_METRIC == 'iou' and val_iou - self.best_iou > MIN_DELTA):
                 self.patience_counter = 0
@@ -221,7 +222,7 @@ class Trainer(object):
                 self.best_iou = val_iou
                 save_checkpoint(self.model, teacher_model=self.teacher, optimizer=self.optimizer,
                                 scheduler=self.scheduler,
-                                epoch_global=self.epoch_global, filename=f"{self.run_dir}/model_best.pth.tar")
+                                epoch_global=self.epoch_global, filename=os.path.join(self.run_dir, "model_best.pth.tar"))
             else:
                 self.patience_counter += 1
                 print(
@@ -540,11 +541,11 @@ def main():
         + f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}"
         if not CONTINUE else
         f"{args.runname or 'test'}")
-    run_dir = f"./runs/{DATASET_NAME}/{MODEL}/{run_name}"
-    run_file = f"{run_dir}/model.pth.tar"
+    run_dir = os.path.join(ROOT_RUN_DIR, DATASET_NAME, MODEL, run_name)
+    run_file = os.path.join(run_dir, 'model.pth.tar')
 
     current_dataset = DATASET_NAME
-    data_dir = f"{ROOT_DATA_DIR}/{current_dataset}"
+    data_dir = os.path.join(ROOT_DATA_DIR, current_dataset)
 
     # train_loader, val_loader = get_vap_loaders(data_dir, nr_to_use)
     train_loader, val_loader = ((get_cs_loaders_mt(data_dir,
