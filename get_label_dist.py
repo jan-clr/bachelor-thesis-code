@@ -4,7 +4,7 @@ import numpy as np
 
 
 def main():
-    root = 'data/vapourbase/gtFine/val'
+    root = 'data/job_4-2023_02_19_16_02_22-cityscapes 1.0/gtFine/default'
     files = glob(f"{root}/**/*labelIds*", recursive=True)
     counts = {}
     total = 0

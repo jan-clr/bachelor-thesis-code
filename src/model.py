@@ -99,7 +99,7 @@ class UnetResEncoder(nn.Module):
             self.dropout = None
 
         self.encoder = timm.create_model(encoder_name, pretrained=True, features_only=True, in_chans=in_ch,
-                                         drop_rate=dropout_p or 0.0)
+                                         drop_rate=dropout_p or 0.0, out_indices=out_indices)
         feature_steps = self.encoder.feature_info.channels()
         self.up = nn.ModuleList()
 
@@ -292,11 +292,12 @@ def test_deeplabv3p():
 
 def test():
     x = torch.randn((4, 3, 512, 256))
-    model = UnetResEncoder(out_indices=(0, 1, 2, 3))
+    model = UnetResEncoder(out_indices=(0, 1, 2))
     model.eval()
     out = model(x)
     for o in out:
         print(o.shape)
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
 
 
 def main():
