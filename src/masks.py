@@ -86,7 +86,7 @@ def generate_cutmix_mask(size):
     bbx1, bby1, bbx2, bby2 = rand_bbox(size, 0.5)
     mask[bbx1:bbx2, bby1:bby2] = 0.0
 
-    return mask
+    return mask.astype(np.int32)
 
 
 def rand_bbox(size, lam):

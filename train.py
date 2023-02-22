@@ -55,7 +55,7 @@ DROPOUT_TEACHER = None
 GENERATOR = None
 CONS_LS_ON_LABELED_SAMPLES = True
 DEV = True
-MIX_MASKS = 'cow'
+MIX_METHOD = 'cow'
 USE_ITERATIVE = False
 SKIP_SUPERVISED = False
 MODEL = 'dlv3p'
@@ -65,6 +65,7 @@ OPTIMIZER = 'adam'
 SPLIT_FACTOR = 2
 OUT_INDICES = None
 ROOT_RUN_DIR = './runs'
+FILTER_EMPTY_PL = True
 
 
 def collate_split_batches(batch):
@@ -586,14 +587,16 @@ def main():
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
 
-    if MIX_MASKS == 'cow':
+    if MIX_METHOD == 'cow':
+        print("Using COW masks.")
         cow_mask_dataset = CowMaskGenerator(crop_size=(IMAGE_HEIGHT, IMAGE_WIDTH), method="mix")
         cow_mask_loader = DataLoader(dataset=cow_mask_dataset,
                                      batch_size=int(BATCH_SIZE_UNLABELED / 2),
                                      num_workers=NUM_WORKERS,
                                      worker_init_fn=seed_worker)
         mask_iter = iter(cow_mask_loader)
-    elif MIX_MASKS == 'cutmix':
+    elif MIX_METHOD == 'cutmix':
+        print("Using CutMix masks.")
         cutmix_dataset = CutMixMaskGenerator(crop_size=(IMAGE_HEIGHT, IMAGE_WIDTH))
         cutmix_loader = DataLoader(dataset=cutmix_dataset,
                                      batch_size=int(BATCH_SIZE_UNLABELED / 2),
