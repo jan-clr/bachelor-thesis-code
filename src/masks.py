@@ -1,3 +1,4 @@
+import cv2
 import torch
 from torch.utils.data import Dataset
 from scipy.ndimage import gaussian_filter
@@ -54,3 +55,77 @@ def generate_cow_mask(size, sigma, method):
 
     return cow_mask_final
 
+
+class CutMixMaskGenerator(Dataset):
+    def __init__(self, crop_size=(256, 256)):
+        """
+        Generates CutMix Masks only
+        https://arxiv.org/abs/1905.04899
+        """
+        self.crop_size = crop_size
+
+    def __getitem__(self, idx):
+        mask = generate_cutmix_mask(size=self.crop_size)
+        mask = np.expand_dims(mask, axis=0)
+
+        return mask
+
+    def __len__(self):
+        return 2000000000
+
+
+def generate_cutmix_mask(size):
+    """
+    Generates a cutmix mask
+    https://arxiv.org/abs/1905.04899
+    :param size: The mask size
+    :return:
+    """
+    mask = np.ones(size)
+    lam = np.random.beta(1.0, 1.0)
+    bbx1, bby1, bbx2, bby2 = rand_bbox(size, 0.5)
+    mask[bbx1:bbx2, bby1:bby2] = 0.0
+
+    return mask
+
+
+def rand_bbox(size, lam):
+    """
+    Generates a random bounding box
+    https://github.com/clovaai/CutMix-PyTorch/blob/2d8eb68faff7fe4962776ad51d175c3b01a25734/train.py#L279
+    :param size: The mask size
+    :param lam: Value to determine cut ration. high lambda = small cut
+    :return:
+    """
+    W = size[1]
+    H = size[0]
+    cut_rat = np.sqrt(1. - lam)
+    cut_w = int(W * cut_rat)
+    cut_h = int(H * cut_rat)
+
+    # uniform
+    cx = np.random.randint(W)
+    cy = np.random.randint(H)
+
+    bbx1 = np.clip(cx - cut_w // 2, 0, W)
+    bby1 = np.clip(cy - cut_h // 2, 0, H)
+    bbx2 = np.clip(cx + cut_w // 2, 0, W)
+    bby2 = np.clip(cy + cut_h // 2, 0, H)
+
+    return bbx1, bby1, bbx2, bby2
+
+
+def main():
+    mask_gen = CutMixMaskGenerator((256, 512))
+    mask = mask_gen[0]
+    print(mask.shape)
+    mask = mask.squeeze()
+    print(mask.shape)
+    cv2.imshow("mask", (mask * 255).astype(np.uint8))
+    print(np.sum(mask == 0))
+    cv2.waitKey()
+    cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    main()

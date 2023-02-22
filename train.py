@@ -16,7 +16,7 @@ import argparse
 from datetime import datetime
 import segmentation_models_pytorch as smp
 
-from src.masks import CowMaskGenerator
+from src.masks import CowMaskGenerator, CutMixMaskGenerator
 from src.transforms import transforms_train_cs, transforms_train_vap, transforms_train_mt_basic, \
     transforms_val, \
     transforms_generator
@@ -55,7 +55,7 @@ DROPOUT_TEACHER = None
 GENERATOR = None
 CONS_LS_ON_LABELED_SAMPLES = True
 DEV = True
-USE_COWMASK = True
+MIX_MASKS = 'cow'
 USE_ITERATIVE = False
 SKIP_SUPERVISED = False
 MODEL = 'dlv3p'
@@ -460,6 +460,7 @@ def main():
                         action=argparse.BooleanOptionalAction)
     parser.add_argument('--split', help='Set the factor for splitting the training images')
     parser.add_argument('--oidx', help='Set the out indices for the feature extractor.', nargs='*')
+    parser.add_argument('--mixmethod', help='Set the method for mixing two samples of unlabeled data.', default='cow')
 
     args = parser.parse_args()
 
@@ -482,6 +483,7 @@ def main():
     global OPTIMIZER
     global SPLIT_FACTOR
     global OUT_INDICES
+    global MIX_METHOD
     label_rng = None
     unlabel_rng = None
 
@@ -527,6 +529,8 @@ def main():
         SPLIT_FACTOR = int(args.split)
     if args.oidx is not None:
         OUT_INDICES = [int(idx) for idx in args.oidx]
+    if args.mixmethod is not None:
+        MIX_METHOD = args.mixmethod
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -582,15 +586,22 @@ def main():
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
 
-    if USE_COWMASK:
+    if MIX_MASKS == 'cow':
         cow_mask_dataset = CowMaskGenerator(crop_size=(IMAGE_HEIGHT, IMAGE_WIDTH), method="mix")
         cow_mask_loader = DataLoader(dataset=cow_mask_dataset,
                                      batch_size=int(BATCH_SIZE_UNLABELED / 2),
                                      num_workers=NUM_WORKERS,
                                      worker_init_fn=seed_worker)
-        cow_mask_iter = iter(cow_mask_loader)
+        mask_iter = iter(cow_mask_loader)
+    elif MIX_MASKS == 'cutmix':
+        cutmix_dataset = CutMixMaskGenerator(crop_size=(IMAGE_HEIGHT, IMAGE_WIDTH))
+        cutmix_loader = DataLoader(dataset=cutmix_dataset,
+                                     batch_size=int(BATCH_SIZE_UNLABELED / 2),
+                                     num_workers=NUM_WORKERS,
+                                     worker_init_fn=seed_worker)
+        mask_iter = iter(cutmix_loader)
     else:
-        cow_mask_iter = None
+        mask_iter = None
 
     print(f"{'Training run': <15} {run_name}")
     print(f"{'Saving to': <15} {run_dir}")
@@ -616,7 +627,7 @@ def main():
 
     if not USE_ITERATIVE:
         trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler,
-                          teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=cow_mask_iter, step=step,
+                          teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=mask_iter, step=step,
                           epoch_global=epoch_global)
         print("\nBeginning Training\n")
         trainer.train()
