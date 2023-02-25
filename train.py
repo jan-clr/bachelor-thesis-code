@@ -65,7 +65,7 @@ OPTIMIZER = 'adam'
 SPLIT_FACTOR = 2
 OUT_INDICES = None
 ROOT_RUN_DIR = './runs'
-FILTER_EMPTY_PL = True
+FILTER_EMPTY_PL = False
 ADDITIONAL_ASYMMETRIC = False
 
 
@@ -262,7 +262,8 @@ class Trainer(object):
                 input_unlabeled = input_unlabeled.float().to(DEVICE)
             target = target.to(DEVICE)
 
-            consistency_loss = 0
+            consistency_loss = torch.tensor(0.0)
+            consistency_weight = get_current_consistency_weight(self.epoch_global - MT_DELAY)
 
             # Unsupervised learning
             if self.teacher is not None and not skip_teacher:
@@ -270,6 +271,7 @@ class Trainer(object):
                 pred_tch_unlabeled = self.teacher(input_unlabeled)
                 pred_tch_labeled = self.teacher(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
 
+                skip_unsupervised = False
                 if FILTER_EMPTY_PL:
                     for i in range(len(pred_tch_unlabeled)):
                         non_empty_input = []
@@ -280,9 +282,11 @@ class Trainer(object):
                         if len(non_empty_input) % 2 != 0:
                             non_empty_input = non_empty_input[:-1]
                             non_empty_pred = non_empty_pred[:-1]
-
-                        input_unlabeled = torch.stack(non_empty_input)
-                        pred_tch_unlabeled = torch.stack(non_empty_pred)
+                        if len(non_empty_input) != 0:
+                            input_unlabeled = torch.stack(non_empty_input)
+                            pred_tch_unlabeled = torch.stack(non_empty_pred)
+                        else:
+                            skip_unsupervised = True
 
                 if self.asymmetric_transforms is not None:
                     input_unlabeled = self.asymmetric_transforms(input_unlabeled)
@@ -292,21 +296,23 @@ class Trainer(object):
                 pred_stu_labeled = self.model(input_labeled)
                 class_loss = self.loss_fn(pred_stu_labeled, target)
 
-                if self.mask_loader is not None:
-                    masks = next(self.mask_loader).to(DEVICE)
-                    masks = masks[:-(len(masks) - len(input_unlabeled))]
-                    input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled)
-                # Unlabeled student predictions
-                pred_stu_unlabeled = self.model(input_unlabeled)
-                # Calc consistency loss
-                consistency_loss_unlabeled = self.consistency_fn(pred_stu_unlabeled, pred_tch_unlabeled)
-                consistency_loss_labeled = self.consistency_fn(pred_stu_labeled,
-                                                               pred_tch_labeled) if CONS_LS_ON_LABELED_SAMPLES else 0
+                if not skip_unsupervised:
+                    if self.mask_loader is not None:
+                        masks = next(self.mask_loader).to(DEVICE)
+                        masks = masks[:-(len(masks) - len(input_unlabeled))]
+                        input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled)
+                    # Unlabeled student predictions
+                    pred_stu_unlabeled = self.model(input_unlabeled)
+                    # Calc consistency loss
+                    consistency_loss_unlabeled = self.consistency_fn(pred_stu_unlabeled, pred_tch_unlabeled)
+                    consistency_loss_labeled = self.consistency_fn(pred_stu_labeled,
+                                                                   pred_tch_labeled) if CONS_LS_ON_LABELED_SAMPLES else 0
 
-                # calculate losses depending on labeled or unlabeled samples
-                consistency_weight = get_current_consistency_weight(self.epoch_global - MT_DELAY)
-                consistency_loss = consistency_loss_labeled + consistency_loss_unlabeled
-                loss = consistency_weight * consistency_loss + class_loss
+                    # calculate losses depending on labeled or unlabeled samples
+                    consistency_loss = consistency_loss_labeled + consistency_loss_unlabeled
+                    loss = consistency_weight * consistency_loss + class_loss
+                else:
+                    loss = class_loss
             else:
                 # Supervised Learning
                 pred_stu_labeled = self.model(input_labeled)
@@ -488,6 +494,8 @@ def main():
     parser.add_argument('--split', help='Set the factor for splitting the training images')
     parser.add_argument('--oidx', help='Set the out indices for the feature extractor.', nargs='*')
     parser.add_argument('--mixmethod', help='Set the method for mixing two samples of unlabeled data.', default='cow')
+    parser.add_argument('--filter_pl', help='Activate Filtering pseudo labels for empty images.', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--asym', help='Add more asym augmentations.', action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
@@ -511,6 +519,8 @@ def main():
     global SPLIT_FACTOR
     global OUT_INDICES
     global MIX_METHOD
+    global FILTER_EMPTY_PL
+    global ADDITIONAL_ASYMMETRIC
     label_rng = None
     unlabel_rng = None
 
@@ -558,6 +568,10 @@ def main():
         OUT_INDICES = [int(idx) for idx in args.oidx]
     if args.mixmethod is not None:
         MIX_METHOD = args.mixmethod
+    if args.filter_pl is not None:
+        FILTER_EMPTY_PL = args.filter_pl
+    if args.asym is not None:
+        ADDITIONAL_ASYMMETRIC = args.asym
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
