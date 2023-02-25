@@ -19,7 +19,7 @@ import segmentation_models_pytorch as smp
 from src.masks import CowMaskGenerator, CutMixMaskGenerator
 from src.transforms import transforms_train_cs, transforms_train_vap, transforms_train_mt_basic, \
     transforms_val, \
-    transforms_generator
+    transforms_generator, gauss_noise_tensor
 from src.datasets import CustomCityscapesDataset, VapourData, NO_LABEL
 from src.model import UnetResEncoder, DeepLabV3plus
 from src.utils import save_checkpoint, load_checkpoint, alert_training_end, generate_pseudo_labels, val_fn
@@ -66,6 +66,7 @@ SPLIT_FACTOR = 2
 OUT_INDICES = None
 ROOT_RUN_DIR = './runs'
 FILTER_EMPTY_PL = True
+ADDITIONAL_ASYMMETRIC = False
 
 
 def collate_split_batches(batch):
@@ -170,7 +171,7 @@ def apply_masks(masks, inputs, targets):
 
 class Trainer(object):
     def __init__(self, model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=None,
-                 teacher=None, consistency_fn=None, mask_loader=None, step=0, epoch_global=0):
+                 teacher=None, consistency_fn=None, mask_loader=None, step=0, epoch_global=0, asymmetric_transforms=None):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -189,6 +190,7 @@ class Trainer(object):
         self.best_iou = None
         self.patience_counter = 0
         self.train_iou = torchmetrics.JaccardIndex(task='multiclass', num_classes=len(self.train_loader.dataset.classes), ignore_index=255).to(DEVICE)
+        self.asymmetric_transforms = asymmetric_transforms
 
         # logging
         self.writer = SummaryWriter(log_dir=run_dir)
@@ -262,18 +264,37 @@ class Trainer(object):
 
             consistency_loss = 0
 
-            # Supervised Learning
-            pred_stu_labeled = self.model(input_labeled)
-            class_loss = self.loss_fn(pred_stu_labeled, target)
-            loss = class_loss
-
             # Unsupervised learning
             if self.teacher is not None and not skip_teacher:
                 # Calc teacher predictions
                 pred_tch_unlabeled = self.teacher(input_unlabeled)
                 pred_tch_labeled = self.teacher(input_labeled) if CONS_LS_ON_LABELED_SAMPLES else None
+
+                if FILTER_EMPTY_PL:
+                    for i in range(len(pred_tch_unlabeled)):
+                        non_empty_input = []
+                        non_empty_pred = []
+                        if not torch.all(pred_tch_unlabeled[i] == 0):
+                            non_empty_input.append(input_unlabeled[i])
+                            non_empty_pred.append(pred_tch_unlabeled[i])
+                        if len(non_empty_input) % 2 != 0:
+                            non_empty_input = non_empty_input[:-1]
+                            non_empty_pred = non_empty_pred[:-1]
+
+                        input_unlabeled = torch.stack(non_empty_input)
+                        pred_tch_unlabeled = torch.stack(non_empty_pred)
+
+                if self.asymmetric_transforms is not None:
+                    input_unlabeled = self.asymmetric_transforms(input_unlabeled)
+                    input_labeled = self.asymmetric_transforms(input_labeled)
+
+                # Supervised Learning
+                pred_stu_labeled = self.model(input_labeled)
+                class_loss = self.loss_fn(pred_stu_labeled, target)
+
                 if self.mask_loader is not None:
                     masks = next(self.mask_loader).to(DEVICE)
+                    masks = masks[:-(len(masks) - len(input_unlabeled))]
                     input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled)
                 # Unlabeled student predictions
                 pred_stu_unlabeled = self.model(input_unlabeled)
@@ -286,6 +307,11 @@ class Trainer(object):
                 consistency_weight = get_current_consistency_weight(self.epoch_global - MT_DELAY)
                 consistency_loss = consistency_loss_labeled + consistency_loss_unlabeled
                 loss = consistency_weight * consistency_loss + class_loss
+            else:
+                # Supervised Learning
+                pred_stu_labeled = self.model(input_labeled)
+                class_loss = self.loss_fn(pred_stu_labeled, target)
+                loss = class_loss
 
             # Backpropagation
             self.optimizer.zero_grad()
@@ -587,6 +613,11 @@ def main():
                                                      threshold_mode='abs', verbose=True, factor=LRS_FACTOR,
                                                      cooldown=(ES_PATIENCE - LR_PATIENCE)) if LRS_ENABLED else None
 
+    if ADDITIONAL_ASYMMETRIC:
+        asym_transform = gauss_noise_tensor
+    else:
+        asym_transform = None
+
     if MIX_METHOD == 'cow':
         print("Using COW masks.")
         cow_mask_dataset = CowMaskGenerator(crop_size=(IMAGE_HEIGHT, IMAGE_WIDTH), method="mix")
@@ -631,7 +662,7 @@ def main():
     if not USE_ITERATIVE:
         trainer = Trainer(model, optimizer, train_loader, val_loader, loss_fn, run_name, run_dir, scheduler=scheduler,
                           teacher=teacher, consistency_fn=consistency_loss_fn, mask_loader=mask_iter, step=step,
-                          epoch_global=epoch_global)
+                          epoch_global=epoch_global, asymmetric_transforms=asym_transform)
         print("\nBeginning Training\n")
         trainer.train()
     else:

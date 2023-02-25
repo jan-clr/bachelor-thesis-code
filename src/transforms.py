@@ -206,3 +206,26 @@ def transforms_val_torch(image, mask):
     mask = torch.as_tensor(np.array(mask), dtype=torch.long)
 
     return image, mask
+
+
+def gauss_noise_tensor(img):
+    """
+    Add gaussian noise to a tensor
+    https://github.com/pytorch/vision/issues/6192#issuecomment-1164176231
+    :param img: 
+    :return: 
+    """
+    assert isinstance(img, torch.Tensor)
+    dtype = img.dtype
+    if not img.is_floating_point():
+        img = img.to(torch.float32)
+
+    sigma = 0.15
+
+    out = img + sigma * torch.randn_like(img)
+    out = torch.clamp(out, 0, 1)
+
+    if out.dtype != dtype:
+        out = out.to(dtype)
+
+    return out

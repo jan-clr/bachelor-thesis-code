@@ -413,7 +413,7 @@ class DropletAccuracy(torchmetrics.Metric):
     def compute(self) -> (float, float, float, float):
         """
         Computes and returns the metrics as float values.
-        :return: precision, recall, relative error of the mean radius (correct), relative error of the mean radius (all)
+        :return: recall, precision, relative error of the mean radius (correct), relative error of the mean radius (all)
         """
         correct = len(self.correct_droplets)
         true = len(self.true_droplets)

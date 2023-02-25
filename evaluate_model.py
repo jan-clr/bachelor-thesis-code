@@ -11,6 +11,7 @@ import csv
 import os
 import pathlib
 import glob
+from pprint import pprint
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -30,6 +31,7 @@ def main():
     parser.add_argument('--bs', help='Batch size to use.', default=1, type=int)
     parser.add_argument('--oidx', help='Set the out indices for the feature extractor.', nargs='*')
     parser.add_argument('--append', help='Append the evaluation to an existing csv file instead of creating a new one.', action='store_true')
+    parser.add_argument('--exclude', help='Exclude the given patter from the evaluation. Only relevant if --pattern is true.', default='')
 
     args = parser.parse_args()
 
@@ -43,18 +45,19 @@ def main():
 
     model = UnetResEncoder(in_ch=3, out_ch=3, encoder_name='resnet34d', out_indices=out_indices).to(DEVICE)
 
-    checkpoints = [args.checkpoint] if not args.pattern else [p for p in glob.glob(args.checkpoint, recursive=True)]
-    print(checkpoints)
+    checkpoints = [args.checkpoint] if not args.pattern else [p for p in (set(glob.glob(args.checkpoint, recursive=True)) - set(glob.glob(args.exclude, recursive=True)))]
+    pprint(checkpoints)
+    print(len(checkpoints))
     append = args.append
     for checkpoint in checkpoints:
         if args.pattern:
-            print(f'Validating {checkpoint}')
+            print(f'\nValidating {checkpoint}')
         load_checkpoint(checkpoint, model)
 
         loss = torch.nn.CrossEntropyLoss(ignore_index=255).to(DEVICE)
 
         metrics = val_fn(val_dataloader, model, loss, DEVICE, True)
-        print(metrics)
+        pprint(metrics)
         inpath = pathlib.Path(checkpoint)
         with open(os.path.join(args.outpath, (inpath.parent.name if args.filename is None else args.filename) + '.csv'), 'w' if not append else 'a') as csv_file:
             writer = csv.writer(csv_file)
