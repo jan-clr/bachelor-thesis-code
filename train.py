@@ -170,7 +170,7 @@ def apply_masks(masks, inputs, targets, add_inverted=False):
         if add_inverted:
             mixed_inputs.append(
                 inputs[i + 1] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * inputs[i])
-        mixed_labels.append(targets[i + 1] * torch.squeeze(masks[int(i / 2)], dim=1) + (
+            mixed_labels.append(targets[i + 1] * torch.squeeze(masks[int(i / 2)], dim=1) + (
                 1 - torch.squeeze(masks[int(i / 2)], dim=1)) * targets[i])
 
     return torch.stack(mixed_inputs).to(DEVICE), torch.squeeze(torch.stack(mixed_labels), dim=1).to(DEVICE)
