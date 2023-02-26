@@ -67,6 +67,7 @@ OUT_INDICES = None
 ROOT_RUN_DIR = './runs'
 FILTER_EMPTY_PL = False
 ADDITIONAL_ASYMMETRIC = False
+ADD_INV = False
 
 
 def collate_split_batches(batch):
@@ -159,14 +160,20 @@ def show_img_and_pred(img, target=None, prediction=None):
     plt.show()
 
 
-def apply_masks(masks, inputs, targets):
+def apply_masks(masks, inputs, targets, add_inverted=False):
     mixed_inputs, mixed_labels = [], []
     for i in range(0, len(inputs), 2):
         mixed_inputs.append(
             inputs[i] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * inputs[i + 1])
         mixed_labels.append(targets[i] * torch.squeeze(masks[int(i / 2)], dim=1) + (
                 1 - torch.squeeze(masks[int(i / 2)], dim=1)) * targets[i + 1])
-    return torch.stack(mixed_inputs).to(DEVICE), torch.squeeze(torch.stack(mixed_labels)).to(DEVICE)
+        if add_inverted:
+            mixed_inputs.append(
+                inputs[i + 1] * masks[int(i / 2)] + (1 - masks[int(i / 2)]) * inputs[i])
+        mixed_labels.append(targets[i + 1] * torch.squeeze(masks[int(i / 2)], dim=1) + (
+                1 - torch.squeeze(masks[int(i / 2)], dim=1)) * targets[i])
+
+    return torch.stack(mixed_inputs).to(DEVICE), torch.squeeze(torch.stack(mixed_labels), dim=1).to(DEVICE)
 
 
 class Trainer(object):
@@ -273,20 +280,21 @@ class Trainer(object):
 
                 skip_unsupervised = False
                 if FILTER_EMPTY_PL:
-                    for i in range(len(pred_tch_unlabeled)):
-                        non_empty_input = []
-                        non_empty_pred = []
-                        if not torch.all(pred_tch_unlabeled[i] == 0):
+                    hard_pseudo_labels = torch.argmax(pred_tch_unlabeled, dim=1)
+                    non_empty_input = []
+                    non_empty_pred = []
+                    for i in range(len(hard_pseudo_labels)):
+                        if not torch.all(hard_pseudo_labels[i] == 0):
                             non_empty_input.append(input_unlabeled[i])
                             non_empty_pred.append(pred_tch_unlabeled[i])
-                        if len(non_empty_input) % 2 != 0:
-                            non_empty_input = non_empty_input[:-1]
-                            non_empty_pred = non_empty_pred[:-1]
-                        if len(non_empty_input) != 0:
-                            input_unlabeled = torch.stack(non_empty_input)
-                            pred_tch_unlabeled = torch.stack(non_empty_pred)
-                        else:
-                            skip_unsupervised = True
+                    if len(non_empty_input) % 2 != 0:
+                        non_empty_input = non_empty_input[:-1]
+                        non_empty_pred = non_empty_pred[:-1]
+                    if len(non_empty_input) != 0:
+                        input_unlabeled = torch.stack(non_empty_input)
+                        pred_tch_unlabeled = torch.stack(non_empty_pred)
+                    else:
+                        skip_unsupervised = True
 
                 if self.asymmetric_transforms is not None:
                     input_unlabeled = self.asymmetric_transforms(input_unlabeled)
@@ -299,8 +307,8 @@ class Trainer(object):
                 if not skip_unsupervised:
                     if self.mask_loader is not None:
                         masks = next(self.mask_loader).to(DEVICE)
-                        masks = masks[:-(len(masks) - len(input_unlabeled))]
-                        input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled)
+                        masks = masks[:int(len(masks) - (BATCH_SIZE_UNLABELED - len(input_unlabeled)) / 2)]
+                        input_unlabeled, pred_tch_unlabeled = apply_masks(masks, input_unlabeled, pred_tch_unlabeled, add_inverted=ADD_INV)
                     # Unlabeled student predictions
                     pred_stu_unlabeled = self.model(input_unlabeled)
                     # Calc consistency loss
@@ -496,6 +504,7 @@ def main():
     parser.add_argument('--mixmethod', help='Set the method for mixing two samples of unlabeled data.', default='cow')
     parser.add_argument('--filter_pl', help='Activate Filtering pseudo labels for empty images.', action=argparse.BooleanOptionalAction)
     parser.add_argument('--asym', help='Add more asym augmentations.', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--add_inv', help='Add mixing results of inverted masks back as well.', action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
@@ -521,6 +530,7 @@ def main():
     global MIX_METHOD
     global FILTER_EMPTY_PL
     global ADDITIONAL_ASYMMETRIC
+    global ADD_INV
     label_rng = None
     unlabel_rng = None
 
@@ -572,6 +582,8 @@ def main():
         FILTER_EMPTY_PL = args.filter_pl
     if args.asym is not None:
         ADDITIONAL_ASYMMETRIC = args.asym
+    if args.add_inv is not None:
+        ADD_INV = args.add_inv
 
     if DEVICE != 'cuda':
         questions = [inquirer.Confirm(name='proceed', message="Cuda Device not found. Proceed anyway?", default=False)]
@@ -661,6 +673,7 @@ def main():
     print(f"{'MT enabled': <15} {MT_ENABLED}")
     print(f"{'IT enabled': <15} {USE_ITERATIVE}")
     print(f"{'ES Patience': <15} {ES_PATIENCE}")
+    print(f"{'Filtering PL': <15} {FILTER_EMPTY_PL}")
 
     step = 0
     epoch_global = 0
