@@ -166,6 +166,18 @@ def transforms_val(image, mask):
     return image, mask
 
 
+def transforms_hough(image, mask):
+    image = np.array(image)
+    mask = np.array(mask)
+
+    transform = ToTensorV2()
+    augmented = transform(image=image, mask=mask)
+    image = augmented["image"]
+    mask = augmented["mask"].long()
+
+    return image, mask
+
+
 def transform_eval(image):
     image = np.array(image)
 

@@ -12,8 +12,7 @@ from PIL import Image
 from src.utils import resize_images, split_images, remove_where_mask_empty
 import cv2
 import torch.multiprocessing
-from src.transforms import transforms_train_vap
-
+from src.transforms import transforms_train_vap, transforms_val
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -335,7 +334,7 @@ class VapourData(VisionDataset):
 
 
 def main():
-    train_data = VapourData("../data/vapourbase_0", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None, transforms=transforms_train_vap, split_factor=2)
+    train_data = VapourData("../data/vapourbase_DS2", mode='train', split=True, use_labeled=slice(None, None), use_unlabeled=None, transforms=transforms_val, split_factor=2)
 
     print(train_data[0][1].shape)
 

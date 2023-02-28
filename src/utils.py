@@ -19,7 +19,7 @@ from torchvision.utils import save_image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import shutil
-from src.detection import detect_droplets
+from src.detection import detect_droplets, detect_droplets_hough
 
 load_dotenv()
 
@@ -438,6 +438,26 @@ class DropletAccuracy(torchmetrics.Metric):
             '''
             self.true_droplets += detect_droplets(target_mask.cpu().numpy())
             self.pred_droplets += detect_droplets(pred_mask.cpu().numpy())
+            for droplet in self.pred_droplets:
+                label_at_center = target_mask[droplet.center[0], droplet.center[1]]
+                if label_at_center == 1 or label_at_center == 2:
+                    self.correct_droplets.append(droplet)
+
+
+class DropletAccuracyHough(DropletAccuracy):
+    def update(self, input: Any, target: Any) -> None:
+        for target_mask, image in zip(target, input):
+            '''
+            tar_img = (target_mask.cpu().numpy() * 255 / 2.0).astype(np.uint8)
+            pred_img = (pred_mask.cpu().numpy() * 255 / 2.0).astype(np.uint8)
+            print(np.unique(tar_img), np.unique(pred_img))
+            cv2.imshow('target', tar_img)
+            cv2.imshow('pred', target_mask)
+            cv2.waitKey()
+            cv2.destroyAllWindows()
+            '''
+            self.true_droplets += detect_droplets(target_mask.cpu().numpy())
+            self.pred_droplets += detect_droplets_hough(image.cpu().permute(1, 2, 0).numpy())
             for droplet in self.pred_droplets:
                 label_at_center = target_mask[droplet.center[0], droplet.center[1]]
                 if label_at_center == 1 or label_at_center == 2:

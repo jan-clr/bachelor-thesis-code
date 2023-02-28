@@ -1,12 +1,13 @@
 import numpy as np
 import cv2
-import torch
 from skimage import measure
 from dataclasses import dataclass
 import alphashape
 from shapely import Point
 from shapely import Polygon
 from itertools import product
+from scipy.ndimage import gaussian_filter
+
 
 
 def load_image(path, greyscale=True):
@@ -104,8 +105,49 @@ def draw_streaks(img, streaks):
     return img
 
 
+def hough_transform(image, min_radius=3, max_radius=20):
+    blurred = gaussian_filter(image, sigma=1.5)
+    circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT_ALT, 1.5, 20, param1=30, param2=0.8, minRadius=min_radius,
+                               maxRadius=max_radius)
+    if circles is None:
+        return []
+
+    return circles[0, :]
+    #circles = np.round(circles[0, :]).astype("int")
+
+
+def detect_droplets_hough(image, min_radius=3, max_radius=20):
+    if len(image.shape) > 2:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    circles = hough_transform(image, min_radius, max_radius)
+    droplets = []
+    for (x, y, r) in circles:
+        contrast = contrast_in_circle(image, np.round([y, x]).astype(int), r)
+        print(contrast)
+        if contrast < 0.3:
+            continue
+        droplets.append(Droplet(center=np.round([y, x]).astype(int), radius=r))
+
+    return droplets
+
+
+def coords_in_circle(center, radius):
+    min_y, min_x, max_y, max_x = [int(x) for x in [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius]]
+    coord_array = [(y, x) for y, x in product(range(min_y, max_y + 1), range(min_x, max_x + 1)) if np.linalg.norm(np.array([y, x]) - center) <= radius]
+    return coord_array
+
+
+def contrast_in_circle(image, center, radius):
+    circle_coords = coords_in_circle(center, radius)
+    circle_pixels = [image[y, x] for y, x in circle_coords if 0 <= y < image.shape[0] and 0 <= x < image.shape[1]]
+    return michelson_contrast(circle_pixels)
+
+
+def michelson_contrast(values):
+    return (np.max(values) - float(np.min(values))) / (np.max(values) + float(np.min(values)))
+
 def main():
-    detect_streaks()
+    pass
 
 
 if __name__ == '__main__':

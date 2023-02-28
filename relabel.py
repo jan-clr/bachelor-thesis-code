@@ -5,9 +5,9 @@ from glob import glob
 
 
 def main():
-    label_map = {3: 0, 4: 0}
+    label_map = {2: 1, 3: 0, 4: 0}
     placeholder = 200
-    root = 'data/job_4-2023_02_19_16_02_22-cityscapes 1.0/gtFine/default'
+    root = 'data/vapourbase_binary/gtFine'
     files = glob(f"{root}/**/*labelIds*", recursive=True)
     for file in files:
         img = load_image(file)
