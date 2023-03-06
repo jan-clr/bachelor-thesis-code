@@ -20,7 +20,7 @@ def load_image(path, greyscale=True):
     return img
 
 
-def detect_droplets(image, lower_percentile=80, upper_percentile=95, label_id=1, exlude_small=True):
+def detect_droplets(image, lower_percentile=80, upper_percentile=95, label_id=1):
     image_cpy = np.copy(image)
     image_cpy[image_cpy != label_id] = 0
     droplets = measure.label(image_cpy)
@@ -89,10 +89,32 @@ def droplet_has_inside(droplet_coords, image, check_for=2):
         if len(inner_cords) <= 0:
             return False
         inside_pixels = np.sum(image[inner_cords.T[0], inner_cords.T[1]] == check_for)
-        return inside_pixels > 0
+        if inside_pixels > 0:
+            return True
+        else:
+            return False
     except Exception as err:
         print(err)
         return False
+
+
+def remove_labels_in_box(image, min_x, min_y, max_x, max_y):
+    print(min_x, min_y, max_x, max_y)
+    (min_x, max_x), (min_y, max_y) = np.clip([min_x, max_x], 0, image.shape[0]), np.clip([min_y, max_y], 0, image.shape[1])
+    print(min_x, min_y, max_x, max_y)
+    image[min_x:max_x, min_y:max_y] = 3
+    #cv2.rectangle(image, (min_y, min_x), (max_y, max_x), 3, 1)
+    return image
+
+
+def remove_labels_where_no_droplet(image, droplets):
+    mask = np.ones(image.shape, dtype=bool)
+    for droplet in droplets:
+        (min_x, min_y), (max_x, max_y) = [int(x) for x in droplet.center[::-1] - droplet.radius - 2], [int(x) for x in droplet.center[::-1] + droplet.radius + 2]
+        (min_x, max_x), (min_y, max_y) = np.clip([min_x, max_x], 0, image.shape[1]), np.clip([min_y, max_y], 0,
+                                                                                             image.shape[0])
+        mask[min_y:max_y, min_x:max_x] = False
+    return np.where(mask, 0, image)
 
 
 def get_points_in_poly(polygon: Polygon):
@@ -146,8 +168,15 @@ def contrast_in_circle(image, center, radius):
 def michelson_contrast(values):
     return (np.max(values) - float(np.min(values))) / (np.max(values) + float(np.min(values)))
 
+
 def main():
-    pass
+    filename = '/media/jc/Volume1/Exp Data/Data/data/psf_test/36dbm_C001H001S0001000033_leftImg8bit_ids.png'
+    image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+    droplets = detect_droplets(image)
+    image = remove_labels_where_no_droplet(image, droplets)
+    cv2.imshow('image', (image * 127.5).astype(np.uint8))
+    cv2.waitKey()
+    cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
