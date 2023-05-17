@@ -37,6 +37,7 @@ def parse_arguments():
                         action='store_true')
     parser.add_argument('--device', help="Set device manually.")
     parser.add_argument('--labelpath', help='Start from existing labels.')
+    parser.add_argument('--bsize', help='Number of images to batch for preprocessing.')
     return parser.parse_args()
 
 

@@ -24,12 +24,15 @@ def main():
     print(model_path)
     model = prepare_model(model_path, DEVICE)
     working_dir = args.impath
+    bsize = 10
 
     if args.labelpath is not None:
         mask_dir = args.labelpath
     else:
+        if args.bsize:
+            bsize = int(args.bsize)
         if args.norm:
-            working_dir = preprocess_imgs(working_dir)
+            working_dir = preprocess_imgs(working_dir, bsize=bsize)
 
         mask_dir = os.path.join(args.impath, 'masks')
         process_imgs(model, working_dir, mask_dir, bsize=1, device=DEVICE)
